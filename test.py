@@ -2,13 +2,14 @@ import random
 import arcade
 
 # --- Constants ---
-SPRITE_SCALING_PLAYER = 0.5
-SPRITE_SCALING_COIN = .25
+SPRITE_SCALING_PLAYER = 2
+SPRITE_SCALING_COIN = .15
 COIN_COUNT = 50
+SPRITE_PATH = "assets/sprites/"
 
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
-SCREEN_TITLE = "Sprite Collect Coins Example"
+SCREEN_WIDTH = 1920
+SCREEN_HEIGHT = 1080
+SCREEN_TITLE = "HELP ME"
 
 
 class MyGame(arcade.Window):
@@ -22,6 +23,7 @@ class MyGame(arcade.Window):
         # Variables that will hold sprite lists
         self.player_list = None
         self.coin_list = None
+        self.wall_list = None
 
         # Set up the player info
         self.player_sprite = None
@@ -30,7 +32,7 @@ class MyGame(arcade.Window):
         # Don't show the mouse cursor
         self.set_mouse_visible(False)
 
-        arcade.set_background_color(arcade.color.AMAZON)
+        arcade.set_background_color(arcade.color.BLACK)
 
     def setup(self):
         """ Set up the game and initialize the variables. """
@@ -38,24 +40,29 @@ class MyGame(arcade.Window):
         # Sprite lists
         self.player_list = arcade.SpriteList()
         self.coin_list = arcade.SpriteList()
+        self.wall_list = arcade.SpriteList()
 
         # Score
         self.score = 0
 
         # Set up the player
         # Character image from kenney.nl
-        self.player_sprite = arcade.Sprite("sprites/exampleSprite1.png",
+        self.player_sprite = arcade.Sprite(SPRITE_PATH + "exampleSprite1.png",
                                            SPRITE_SCALING_PLAYER)
         self.player_sprite.center_x = 50
         self.player_sprite.center_y = 50
         self.player_list.append(self.player_sprite)
+
+        self.physics_engine = arcade.PhysicsEnginePlatformer(self.player_sprite,
+                                                     self.wall_list,
+                                                     gravity_constant=GRAVITY)
 
         # Create the coins
         for i in range(COIN_COUNT):
 
             # Create the coin instance
             # Coin image from kenney.nl
-            coin = arcade.Sprite("sprites/coinSprite1.png",
+            coin = arcade.Sprite(SPRITE_PATH + "coinSprite1.png",
                                  SPRITE_SCALING_COIN)
 
             # Position the coin
@@ -74,13 +81,6 @@ class MyGame(arcade.Window):
         # Put the text on the screen.
         output = f"Score: {self.score}"
         arcade.draw_text(output, 10, 20, arcade.color.WHITE, 14)
-
-    def on_mouse_motion(self, x, y, dx, dy):
-        """ Handle Mouse Motion """
-
-        # Move the center of the player sprite to match the mouse x, y
-        self.player_sprite.center_x = x
-        self.player_sprite.center_y = y
 
     def on_update(self, delta_time):
         """ Movement and game logic """

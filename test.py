@@ -1,109 +1,50 @@
-import random
+#Imports
 import arcade
-
-# --- Constants ---
-SPRITE_SCALING_PLAYER = 2
-SPRITE_SCALING_COIN = .15
-COIN_COUNT = 50
-SPRITE_PATH = "assets/sprites/"
-
-SCREEN_WIDTH = 1920
-SCREEN_HEIGHT = 1080
-SCREEN_TITLE = "HELP ME"
+import math
+from typing import Optional
+import antigravity
+from classes.GameWindow import GameWindow
 
 
-class MyGame(arcade.Window):
-    """ Our custom Window Class"""
+#Native Sprite Sizes
+SPRITE_IMAGE_SIZE = 128
 
-    def __init__(self):
-        """ Initializer """
-        # Call the parent class initializer
-        super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+#Sprite Sizing
+SPRITE_SCALING_PLAYER   = 0.5
+SPRITE_SCALING_TILES    = 0.5
+SPRITE_SIZE_PLAYER      = int(SPRITE_IMAGE_SIZE * SPRITE_SCALING_PLAYER)
+SPRITE_SIZE_TILES       = int(SPRITE_IMAGE_SIZE * SPRITE_SCALING_TILES)
 
-        # Variables that will hold sprite lists
-        self.player_list = None
-        self.coin_list = None
-        self.wall_list = None
-
-        # Set up the player info
-        self.player_sprite = None
-        self.score = 0
-
-        # Don't show the mouse cursor
-        self.set_mouse_visible(False)
-
-        arcade.set_background_color(arcade.color.BLACK)
-
-    def setup(self):
-        """ Set up the game and initialize the variables. """
-
-        # Sprite lists
-        self.player_list = arcade.SpriteList()
-        self.coin_list = arcade.SpriteList()
-        self.wall_list = arcade.SpriteList()
-
-        # Score
-        self.score = 0
-
-        # Set up the player
-        # Character image from kenney.nl
-        self.player_sprite = arcade.Sprite(SPRITE_PATH + "exampleSprite1.png",
-                                           SPRITE_SCALING_PLAYER)
-        self.player_sprite.center_x = 50
-        self.player_sprite.center_y = 50
-        self.player_list.append(self.player_sprite)
-
-        self.physics_engine = arcade.PhysicsEnginePlatformer(self.player_sprite,
-                                                     self.wall_list,
-                                                     gravity_constant=GRAVITY)
-
-        # Create the coins
-        for i in range(COIN_COUNT):
-
-            # Create the coin instance
-            # Coin image from kenney.nl
-            coin = arcade.Sprite(SPRITE_PATH + "coinSprite1.png",
-                                 SPRITE_SCALING_COIN)
-
-            # Position the coin
-            coin.center_x = random.randrange(SCREEN_WIDTH)
-            coin.center_y = random.randrange(SCREEN_HEIGHT)
-
-            # Add the coin to the lists
-            self.coin_list.append(coin)
-
-    def on_draw(self):
-        """ Draw everything """
-        arcade.start_render()
-        self.coin_list.draw()
-        self.player_list.draw()
-
-        # Put the text on the screen.
-        output = f"Score: {self.score}"
-        arcade.draw_text(output, 10, 20, arcade.color.WHITE, 14)
-
-    def on_update(self, delta_time):
-        """ Movement and game logic """
-
-        # Call update on all sprites (The sprites don't do much in this
-        # example though.)
-        self.coin_list.update()
-
-        # Generate a list of all sprites that collided with the player.
-        coins_hit_list = arcade.check_for_collision_with_list(self.player_sprite, self.coin_list)
-
-        # Loop through each colliding sprite, remove it, and add to the score.
-        for coin in coins_hit_list:
-            coin.remove_from_sprite_lists()
-            self.score += 1
+#Screen Settings
+SCREEN_TITLE        = "Test platformer"
+SCREEN_BACK_COLOUR  = arcade.color.ALMOND
+SCREEN_GRID_WIDTH   = 25 
+SCREEN_GRID_HEIGHT  = 15 
+SCREEN_WIDTH        = SPRITE_SIZE_TILES * SCREEN_GRID_WIDTH
+SCREEN_HEIGHT       = SPRITE_SIZE_TILES * SCREEN_GRID_HEIGHT
 
 
+
+        
 def main():
-    """ Main method """
-    window = MyGame()
+    window = GameWindow(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE, SCREEN_BACK_COLOUR)
     window.setup()
+    printAll()
     arcade.run()
-
-
+    
+def printAll():
+    pSep = " : "
+    print("Tanis Roberts - Project Test v1")
+    print("-------------------------------")
+    print("[SCREEN_WIDTH]", SCREEN_WIDTH, sep=pSep)
+    print("[SCREEN_HEIGHT]", SCREEN_HEIGHT, sep=pSep)
+    print("[GRID_WIDTH]", SCREEN_GRID_WIDTH, sep=pSep)
+    print("[GRID_HEIGHT]", SCREEN_GRID_HEIGHT, sep=pSep)
+    print("-------------------------------")
+    
+    
+    
 if __name__ == "__main__":
     main()
+    
+    

@@ -1,0 +1,42 @@
+import arcade
+import math
+from typing import Optional
+
+# -- Sprite Settings --
+SPRITE_FILE_NAME = "player"
+SPRITE_FOLDER_PATH = "assets/sprites/"
+
+SPRITE_IMAGE_SIZE = 128
+SPRITE_SCALING_PLAYER = 0.5
+SPRITE_SCALING_TILES = 0.5
+SPRITE_SIZE = int(SPRITE_IMAGE_SIZE * SPRITE_SCALING_PLAYER)
+
+
+# -- Game Window Settings --
+SCREEN_TITLE = "Tanis Roberts - Final Project"
+SCREEN_GRID_WIDTH = 25
+SCREEN_GRID_HEIGHT = 15
+SCREEN_WIDTH = SPRITE_SIZE * SCREEN_GRID_WIDTH
+SCREEN_HEIGHT = SPRITE_SIZE * SCREEN_GRID_HEIGHT
+
+BACKGROUND_COLOUR = arcade.color.SKY_BLUE
+
+
+# -- Map settings --
+MAP_FILE_NAME = "level1.tmx"
+MAP_FOLDER_PATH = "assets/tilemap/"
+
+# -- Physics Settings --
+
+# - General
+GRAVITY = 1500
+DEFAULT_DAMPING = 1.0
+WALL_FRICTION = 0.7
+DYNAMIC_ITEM_FRICTION = 0.6
+
+# - Player
+PLAYER_DAMPING = 0.4
+PLAYER_FRICTION = 1.0
+PLAYER_MASS = 2.0
+PLAYER_MAX_HORIZONTAL_SPEED = 450
+PLAYER_MAX_VERTICAL_SPEED = 1600

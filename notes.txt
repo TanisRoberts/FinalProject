@@ -1,0 +1,3 @@
+get_distance_between_sprites - distance between the center of two given sprites, can be used as a fitness measure
+checkpoints +5 fitness
+finish line +100 fitness

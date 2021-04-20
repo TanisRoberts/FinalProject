@@ -1,10 +1,12 @@
 import arcade
+import pygame
 import math
 from typing import Optional
 
 # -- General Settings --
 IS_DEBUG = True
 OPEN_AT_GAME = False
+CONFIG_FILE_PATH = "res/NEAT_config.txt"
 
 
 # -- Splash View Settings --
@@ -65,6 +67,9 @@ MAP_FOLDER_PATH = "assets/tilemap/"
 GRID_START_X = 4
 GRID_START_Y = 20
 
+PLAYER_START_POSITION_X = SPRITE_SIZE * GRID_START_X + SPRITE_SIZE / 2
+PLAYER_START_POSITION_Y = SPRITE_SIZE * GRID_START_Y + SPRITE_SIZE / 2
+
 
 # -- Physics Settings --
 # - General
@@ -72,6 +77,7 @@ GRAVITY = 1500
 DEFAULT_DAMPING = 1.0
 WALL_FRICTION = 0.7
 DYNAMIC_ITEM_FRICTION = 0.6
+
 
 # - Player
 PLAYER_DAMPING = 0.4

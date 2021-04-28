@@ -1,6 +1,7 @@
 import arcade
 import neat
 import pymunk
+import random
 from res.constants import *
 
 
@@ -25,6 +26,8 @@ class PlayerSprite(arcade.Sprite):
         self.jump = False
         self.direction = 0
         
+        self.activated_items = arcade.SpriteList()
+        
         
         self.idle_texture_pair = arcade.load_texture_pair(f"{PLAYER_SPRITE_FILE_PATH}_idle.png")
         self.jump_texture_pair = arcade.load_texture_pair(f"{PLAYER_SPRITE_FILE_PATH}_jump.png")
@@ -39,8 +42,7 @@ class PlayerSprite(arcade.Sprite):
             self.hit_box = self.texture.hit_box_points
             self.character_face_direction = RIGHT_FACING
             self.cur_texture = 0
-            self.x_odometer = 0
-            
+            self.x_odometer = 0  
             
     def pymunk_moved(self, physics_engine, dx, dy, d_angle):
         '''
@@ -114,6 +116,13 @@ class PlayerSprite(arcade.Sprite):
             self.jump = False
             impulse = (0, PLAYER_JUMP_IMPULSE)
             self.physics_engine.apply_impulse(self, impulse)
+            
+    def activate_item(self, item):
+        if self.activated_items.index(item):
+            return False
+        else:
+            self.activated_items.append(item)
+            return True
         
     
    
@@ -176,9 +185,10 @@ class SplashView(arcade.View):
     def on_key_press(self, key, modifiers):
         
         if key == arcade.key.KEY_1:
-            #STILL UNDER CONSTRUCTION
+            #Use the AI
             play_type = 1
-            self.window.show_view(SplashView("Under Construction..."))
+            run(CONFIG_FILE_PATH)        
+                
         elif key == arcade.key.KEY_2:
             #Pymunk Physics
             play_type = 2
@@ -454,7 +464,7 @@ class GameView(arcade.View):
                          color= GAME_FONT_COLOUR,
                          font_size= 35)
      
-class AIView():
+class AIView(arcade.View):
     def __init__(self):
         
         super().__init__()
@@ -505,21 +515,6 @@ class AIView():
         self.hazard_list = arcade.tilemap.process_layer(game_map, 'Hazards', SPRITE_SCALING_TILES)
         self.player_list = arcade.SpriteList()
         
-        self.player_sprite = PlayerSprite(PLAYER_START_POSITION_X, PLAYER_START_POSITION_Y, physics_engine)
-        self.player_list.append(self.player_sprite)
-        
-        
-        
-        # -- Player List
-        '''self.physics_engine.add_sprite(self.player_sprite,
-                                        friction= PLAYER_FRICTION,
-                                        mass= PLAYER_MASS,
-                                        moment= arcade.PymunkPhysicsEngine.MOMENT_INF,
-                                        collision_type= "player",
-                                        radius= 0.1,
-                                        max_horizontal_velocity= PLAYER_MAX_HORIZONTAL_SPEED,
-                                        max_vertical_velocity= PLAYER_MAX_VERTICAL_SPEED)'''
-        
         # -- Laser List
         self.physics_engine.add_sprite_list(self.laser_list,
                                             friction= 0,
@@ -551,75 +546,8 @@ class AIView():
                                                   second_type= "player",
                                                   begin_handler= no_collision)
         
-        
-        
-        
-    
-    '''def on_key_press(self, key, modifiers):
-        
-        if key == arcade.key.LEFT or key == arcade.key.A:
-            self.left_pressed = True
-            print("left")
-        elif key == arcade.key.RIGHT or key == arcade.key.D:
-            self.right_pressed = True
-            print("right")
-        elif key == arcade.key.UP or key == arcade.key.W:
-            if self.physics_engine.is_on_ground(self.player_sprite):
-                impulse = (0, PLAYER_JUMP_IMPULSE)
-                self.physics_engine.apply_impulse(self.player_sprite, impulse)
-                print("jump")
-        elif IS_DEBUG:
-            if key == arcade.key.G:
-                self.setup()
-            elif key == arcade.key.M:
-                self.current_map += 1
-                if self.current_map > len(MAP_SWITCHER)-1:
-                    self.current_map = 0
-                print("[current_map: %d]" % self.current_map)
-                print("[Map Path: %s]" % MAP_FOLDER_PATH + MAP_SWITCHER.get(self.current_map))
-                self.setup()
-            elif key == arcade.key.F:
-                self.window.set_fullscreen(not self.window.fullscreen)
-
-                width, height = self.window.get_size()
-                arcade.set_viewport(0, width, 0, height)
-
-    
-    def on_key_release(self, key, modifers):
-        
-        if key == arcade.key.LEFT or key == arcade.key.A:
-            self.left_pressed = False
-        elif key == arcade.key.RIGHT or key == arcade.key.D:
-            self.right_pressed = False
-    '''
-        
     
     def on_update(self, delta_time):
-
-        current_sprite = self.player_list.__getitem__(0)
-        
-        arcade.set_viewport(current_sprite.left - (SCREEN_WIDTH/2),
-                            current_sprite.left + (VIEWPORT_TEST_X),
-                            current_sprite.bottom - (SCREEN_HEIGHT / 2),
-                            current_sprite.bottom + (VIEWPORT_TEST_Y))
-            
-            
-        for laser in self.laser_list:
-            laser.set_position(laser._get_center_x() + LASER_MOVE_SPEED,laser._get_center_y())
-        
-        item_hit_list = arcade.check_for_collision_with_list(self.player_sprite,self.item_list)
-        
-        for item in item_hit_list:
-            self.score += 1
-            item.remove_from_sprite_lists()
-            
-        laser_hit_list = arcade.check_for_collision_with_list(self.player_sprite,self.laser_list)
-        
-        for beam in laser_hit_list:
-            self.death_count += 1
-            #beam.remove_from_sprite_lists()
-        
-        
         self.physics_engine.step()
         
     
@@ -673,6 +601,21 @@ class AIView():
         self.player_list.append(new_player)
         
         return new_player
+    
+    def check_collisions(self, player):
+        item_hit_list = arcade.check_for_collision_with_list(player,self.item_list)
+        
+        for item in item_hit_list:
+            if player.activate_item(item):
+                self.score += 1
+                
+        laser_hit_list = arcade.check_for_collision_with_list(player,self.laser_list)
+        
+        for beam in laser_hit_list:
+            self.player_list.pop(self.player_list.index(player))
+            return False
+        
+        return True
        
 def eval_genomes(genomes, config):
     
@@ -682,7 +625,8 @@ def eval_genomes(genomes, config):
     
     view = AIView()
     view.setup()
-    win.show_view(view)
+    
+    tick = 0
     
     ge = []
     nets = []
@@ -695,18 +639,30 @@ def eval_genomes(genomes, config):
         players.append(player)
         ge.append(genome)
     
+    win.show_view(view)
+    
     run = True
     while run and len(players) > 0:
-        for event in events:
-            if event == "QUIT":
-                run = False
-                quit()
-                break
+        tick += 1.0
+        for laser in view.laser_list:
+            laser.set_position(laser._get_center_x() + LASER_MOVE_SPEED,laser._get_center_y())
             
-    for i, player in enumerate(players):
-        ge[i].fitness += FRAME_FITNESS
+        for i, player in enumerate(players):
+            ge[i].fitness += FRAME_FITNESS
         
-        output = nets[players.index(player)].activate(())
+            player.move(random.uniform(-1,1),False)
+            
+            view.check_collisions(player)
+        
+        current_sprite = players.__getitem__(0)
+        
+        arcade.set_viewport(current_sprite.left - (SCREEN_WIDTH/2),
+                            current_sprite.left + (VIEWPORT_TEST_X),
+                            current_sprite.bottom - (SCREEN_HEIGHT / 2),
+                            current_sprite.bottom + (VIEWPORT_TEST_Y))
+        
+        view.update(tick)
+
     
 
 def run(config_file):

@@ -1,3 +1,9 @@
 get_distance_between_sprites - distance between the center of two given sprites, can be used as a fitness measure
 checkpoints +5 fitness
 finish line +100 fitness
+
+https://stackoverflow.com/questions/46614526/how-to-import-a-csv-file-into-a-data-array
+https://stackoverflow.com/questions/20012307/how-can-i-get-the-coordinates-of-a-sprites-position-in-pygame
+https://www.w3schools.com/python/gloss_python_array_length.asp
+https://www.w3schools.com/python/python_arrays.asp
+https://www.w3schools.com/python/python_operators.asp

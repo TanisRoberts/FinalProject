@@ -7,3 +7,6 @@ https://stackoverflow.com/questions/20012307/how-can-i-get-the-coordinates-of-a-
 https://www.w3schools.com/python/gloss_python_array_length.asp
 https://www.w3schools.com/python/python_arrays.asp
 https://www.w3schools.com/python/python_operators.asp
+
+
+CURRENT VIDEO: https://www.youtube.com/watch?v=JTM8_pcQOUU&list=PLjcN1EyupaQm20hlUE11y9y8EY2aXLpnv&index=11

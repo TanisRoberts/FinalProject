@@ -4,6 +4,7 @@ import random
 import csv
 import pandas
 import numpy
+import math
 from res.constants_py import *
 
 pygame.init()
@@ -15,15 +16,13 @@ clock = pygame.time.Clock()
 name_font = pygame.font.SysFont(CHARACTER_FONT, NAME_FONT_SIZE)
 ui_font = pygame.font.SysFont(CHARACTER_FONT, UI_FONT_SIZE)
 
+screen_scroll = 0
+total_scroll = 0
 
-#Hopefully Temporary
-tfc = (0,0,0)
-tfy = SCREEN_HEIGHT - 210
 
 def draw_bg():
     screen.fill(SCREEN_BACKGROUND_COLOUR)
-    pygame.draw.line(screen, tfc, (0,tfy), (SCREEN_WIDTH,tfy))
-    
+
 def get_names():
     print("--- [Retrieving Player Names] ---")
     
@@ -38,22 +37,87 @@ def get_names():
     print(" -- {} Player Names Retrieved! --\n".format(len(nl)))   
     return nl
 
-def create_marker(player):
-    if not marker_list:
-        marker_type = 0
-    elif len(marker_list) == (len(player_list) - 1):
+def create_death_marker(player):
+    global strongest_dummy
+    
+    if player.player_type == 'Dummy':
+        if len(marker_list) == 0:
+            marker_type = 0
+            strongest_dummy = player
+        else:
+            marker_type = 1
+
+            if player.score > strongest_dummy.score:
+                strongest_dummy = player
+                player.log("Is the strongest dummy!")
+                
+    elif player.player_type == 'Player':
         marker_type = 2
+        
     else:
         marker_type = 1
+            
         
     marker = Marker(player.get_center_x(), player.get_center_y(), marker_type, player.player_tag)
     marker_list.append(marker)
 
+def generate_player(goal_position):
+    print("--- [Generating Player] ---")
+    p_id = 0
+    name = name_list[random.randint(0, len(name_list) - 1)][0]
+    print("-- [Generating '{}' - PID: {}] --".format(name,p_id))
+    if USE_DYNAMIC_SPRITES:
+        sprite_id = random.randint(0,DYNAMIC_SPRITE_COUNT-2)
+    else:
+        sprite_id = 6
+    player = Player(p_id, player_start_x, player_start_y, sprite_id, name, 'Player', goal_position)
+    player.log("Starts at: X{} Y{}", {player.rect.left, player.rect.top})
+    player.log(" -- Player Generated Successfully! --\n")
+
+    print("--- [Player '{}' Successfully Generated] ---\n".format(player.player_tag))
+    return player
+
+def generate_dummies_bulk(offset, goal_position):
+    first_set = False
+    print("--- [Generating {bat} batches of {pop} Dummies] ---".format(pop= DUMMY_POPULATION, bat= DUMMY_BATCHES))
+
+    for b_id in range(DUMMY_BATCHES):
+        #Set Batch Sprite
+        if USE_DYNAMIC_SPRITES:
+            sprite_id = random.randint(0,DYNAMIC_SPRITE_COUNT-2)
+        else:
+            sprite_id = 0
+                
+        for n in range(DUMMY_POPULATION):
+            
+            name = name_list[random.randint(0, len(name_list) - 1)][0]
+            d_id = len(dummy_list)
+            print("-- [Generating '{name}' in batch {bid} - DID: {did}] --".format(name= name, did= d_id, bid= b_id))
+
+            if USE_SPREAD_START:
+                x = offset + random.randint(player_start_x - SPREAD_START_VARIANCE, player_start_x + SPREAD_START_VARIANCE)
+                y = random.randint(player_start_y - SPREAD_START_VARIANCE, player_start_y + SPREAD_START_VARIANCE)
+            else:    
+                x = player_start_x
+                y = player_start_y
+
+            dummy = Player(d_id, x, y, sprite_id, name, 'Dummy', goal_position)
+            dummy.log("Starts at: X{} Y{}", {dummy.rect.left, dummy.rect.top})
+            dummy.moving_right = True
+            dummy_list.append(dummy)
+            dummy.log(" -- Dummy Generated Successfully! --\n")
+
+    print("--- [{}/{} Dummies Successfully Generated] ---\n".format(len(dummy_list), (DUMMY_POPULATION * DUMMY_BATCHES)))
+
 
 class World():
     def __init__(self):
-        self.player_start_position = (PLAYER_START_POS_X, PLAYER_START_POS_Y)
+        self.player_start_position_x = PLAYER_START_POS_X
+        self.player_start_position_y = PLAYER_START_POS_Y
         
+        self.goal_position = 0
+        
+        self.world_list = []
         self.wall_list = []
         self.item_list = []
         self.goal_list = []
@@ -69,7 +133,7 @@ class World():
         self.tile_img_list = []
         for x in range(TILE_TYPES):
             img = pygame.image.load(MAP_TILES_FILE_PATH.format(x))
-            img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
+            img = pygame.transform.scale(img, (int(TILE_SIZE), int(TILE_SIZE)))
             self.tile_img_list.append(img)
         
     def process_data(self, data):
@@ -90,6 +154,7 @@ class World():
                         #Create Wall Tile
                         self.wall_list.append(tile_data)
                         self.wall_group.add()
+                        self.world_list.append(tile_data)
                     elif tile >= HAZARD_TILE_MIN and tile <= HAZARD_TILE_MAX:
                         #Create Hazard Object
                         h_type = tile - HAZARD_TILE_MIN
@@ -99,6 +164,7 @@ class World():
                     elif tile >= BG_TILE_MIN and tile <= BG_TILE_MAX:
                         #Create Background Tile
                         self.bg_list.append(tile_data)
+                        self.world_list.append(tile_data)
                     elif tile == ITEM_TILE_NUM:
                         #Create Item Object
                         item = Item(len(self.item_list), x_pos, y_pos)
@@ -107,30 +173,41 @@ class World():
                     elif tile == GOAL_TILE_NUM:
                         #Create Goal Object
                         goal = Goal(len(self.goal_list), x_pos, y_pos)
+                        self.goal_position = x_pos
                         self.goal_group.add(goal)
                         self.goal_list.append(goal)
                     elif tile == PLAYER_START_TILE:
                         #Store Player Start Coordinates
-                        self.player_start_position = (x_pos, y_pos)
+                        self.player_start_position_x = x_pos
+                        self.player_start_position_y = y_pos
                     
     def draw(self):
-        for tile in self.wall_list:
-            screen.blit(tile[0], tile[1])
-        
-        for tile in self.bg_list:
+        for tile in self.world_list:
+            tile[1][0] += screen_scroll
             screen.blit(tile[0], tile[1])
 
+
 class Player(pygame.sprite.Sprite):
-    def __init__(self, p_id, x = PLAYER_START_POS_X, y = PLAYER_START_POS_Y, sprite_id = 0, p_name = ""):
+    def __init__(self, p_id, x = PLAYER_START_POS_X, y = PLAYER_START_POS_Y, sprite_id = 0, p_name = "", p_type = 'Player', goal_position = 0):
         super().__init__()
         
         # -- General
         self.player_id = p_id
         self.player_tag = "{} {}".format(p_name,p_id)
+        self.player_type = p_type
         self.is_alive = True
         self.score = 0
         self.collected_item_list = []
         self.collected_goal = False
+        
+        self.goal_position = goal_position
+        self.distance_to_target = 0
+        
+        if p_type == 'Player':
+            self.followed = True
+        else:
+            self.followed = False
+            
         
         
         # -- Visual
@@ -171,7 +248,7 @@ class Player(pygame.sprite.Sprite):
             for i in range(DYNAMIC_ANIM_FRAME_COUNT):
                 img = pygame.image.load(ERROR_SPRITE_FILE_PATH.format(DYNAMIC_SPRITE_ANIM_FRAME_LIST[i]))
                 img = pygame.transform.scale(img, (int(img.get_width() * SPRITE_SCALING_PLAYER), int(img.get_height() * SPRITE_SCALING_PLAYER)))
-                self.frame_list.append(img)
+                temp_list.append(img)
             
             self.frame_list.append(temp_list)
             temp_list = []
@@ -179,7 +256,7 @@ class Player(pygame.sprite.Sprite):
             for i in range(DYNAMIC_STATIC_FRAME_COUNT):
                 img = pygame.image.load(ERROR_SPRITE_FILE_PATH.format(DYNAMIC_SPRITE_STATIC_FRAME_LIST[i]))
                 img = pygame.transform.scale(img, (int(img.get_width() * SPRITE_SCALING_PLAYER), int(img.get_height() * SPRITE_SCALING_PLAYER)))
-                self.frame_list.append(img)
+                temp_list.append(img)
             
             self.frame_list.append(temp_list)
             self.log("!!! Error Creating Sprite, Zombie created !!!")
@@ -200,7 +277,7 @@ class Player(pygame.sprite.Sprite):
         self.flip = False
         self.vel_y = 0
         self.jump = False
-        self.is_in_air = False
+        self.is_in_air = True
         
         
     def update_animation(self):
@@ -226,21 +303,19 @@ class Player(pygame.sprite.Sprite):
                 if self.frame_index >= len(self.frame_list[0]):
                     self.frame_index = 0
         else:
-            self.image = self.frame_list[1][0]
-            
-        
-            
+            self.image = self.frame_list[1][0]        
         
     def log(self, text = "", data = {}):
         msg = text.format(*data)
-        print("[P: {}] {}".format(self.player_tag,msg))
+        if IS_DEBUG:
+            print("[P: {}] {}".format(self.player_tag,msg))
         
     def get_center_x(self): return self.rect.left + (self.rect.width / 2)
     
-    def get_center_y(self): return self.rect.top - (self.rect.height / 2) 
-        
-        
+    def get_center_y(self): return self.rect.top + (self.rect.height / 2) 
+          
     def move(self):
+        global screen_scroll, total_scroll
         dx = 0
         dy = 0
         
@@ -254,7 +329,7 @@ class Player(pygame.sprite.Sprite):
             self.x_direction = 1
             self.flip = False
         
-        if self.jump:
+        if self.jump and not self.is_in_air:
             self.vel_y = -PLAYER_JUMP_IMPULSE
             self.jump = False
             self.is_in_air = True
@@ -282,18 +357,33 @@ class Player(pygame.sprite.Sprite):
         self.rect.x += dx
         self.rect.y += dy
         
-        
+        if self.followed:
+            if (self.rect.right > SCREEN_WIDTH - SCROLL_THRESHOLD and total_scroll < (COLS * TILE_SIZE) - SCREEN_WIDTH):
+                self.rect.x -= dx
+                screen_scroll = -dx 
+                total_scroll -= -dx
+                
+            elif (self.rect.left < (SCROLL_THRESHOLD / 4) and total_scroll > abs(dx)):
+                self.rect.x -= dx
+                screen_scroll = -dx
+                total_scroll -= -dx
+                
+            else:
+                screen_scroll = 0
+        else:
+            self.rect.x += screen_scroll
+                     
     def die(self, msg):
         self.is_alive = False
-        create_marker(self)
+        create_death_marker(self)
         self.log("died by {}!",{msg})
         
-        
-    def update(self):
+    def check_collisions(self):
         if self.is_alive:
             hazard_hit_list = pygame.sprite.spritecollide(self, hazard_group, False)
             for hazard in hazard_hit_list:
                 self.die(hazard.hazard_type)
+                return False
                 
             item_hit_list = pygame.sprite.spritecollide(self, item_group, False)
             for item in item_hit_list:
@@ -311,19 +401,29 @@ class Player(pygame.sprite.Sprite):
             
             if self.score >= WIN_SCORE:
                 self.die("winning")
-
-        
-        
+                return False
+            
+    def get_distance_to_target(self):
+        return self.goal_position - self.rect.right
+                
     def draw(self):
         screen.blit(pygame.transform.flip(self.image, self.flip, False), self.rect)
+            
         if SHOW_COLLISION_BOXES:
             for side in range(4):
-                pygame.draw.rect(screen, (255,100,255), (self.rect.left - side, self.rect.top - side, self.width, self.height), 1)
+                pygame.draw.rect(screen, (255,100,255), (self.rect.left - side, self.rect.top - side, self.image.get_width(), self.image.get_height()), 1)
             
         name_tag_x = self.get_center_x() - (self.name_text_surface.get_width() / 2)
         name_tag_y = self.rect.top - (self.name_text_surface.get_height() + 10)
         screen.blit(self.name_text_surface, (name_tag_x , name_tag_y))
  
+    def update(self):
+        self.move()
+        self.distance_to_target = self.get_distance_to_target()
+        self.update_animation()
+        self.check_collisions()
+        self.draw()
+        
         
 class Item(pygame.sprite.Sprite):
     def __init__(self, i_id, x = 0, y = 0):
@@ -341,13 +441,14 @@ class Item(pygame.sprite.Sprite):
                 self.log("Loading Animation Frame: {}", {sprite_file_path})
                 
                 img = pygame.image.load(sprite_file_path)
-                img = pygame.transform.scale(img, (int(img.get_width() * SPRITE_SCALING_ITEM), int(img.get_height() * SPRITE_SCALING_ITEM)))
+                #img = pygame.transform.scale(img, (int(img.get_width() * SPRITE_SCALING_ITEM), int(img.get_height() * SPRITE_SCALING_ITEM)))
+                img = pygame.transform.scale(img, (int(TILE_SIZE), int(TILE_SIZE)))
                 self.frame_list.append(img)
         self.log("Sprite Created Successfully!")
         
         self.image = self.frame_list[self.frame_index]
         self.rect = self.image.get_rect()
-        self.rect.center = (x, y)
+        self.rect.midtop = (x + TILE_SIZE // 2, y + (TILE_SIZE - self.image.get_height()))
         
         
     def update_animation(self):
@@ -365,9 +466,16 @@ class Item(pygame.sprite.Sprite):
                     
     def log(self, text = "", data = {}):
         msg = text.format(*data)
-        print("[IID: {}] {}".format(self.item_id,msg))
+        if IS_DEBUG:
+            print("[IID: {}] {}".format(self.item_id,msg))
         
     def draw(self):
+        self.rect.x += screen_scroll
+        
+        if SHOW_COLLISION_BOXES:
+            for side in range(4):
+                pygame.draw.rect(screen, (255,100,255), (self.rect.left - side, self.rect.top - side, self.image.get_width(), self.image.get_height()), 1)
+                
         screen.blit(self.image, self.rect)
         
     
@@ -387,13 +495,13 @@ class Goal(pygame.sprite.Sprite):
                 self.log("Loading Animation Frame: {}", {sprite_file_path})
                 
                 img = pygame.image.load(sprite_file_path)
-                img = pygame.transform.scale(img, (int(img.get_width() * SPRITE_SCALING_GOAL), int(img.get_height() * SPRITE_SCALING_GOAL)))
+                img = pygame.transform.scale(img, (int(TILE_SIZE), int(TILE_SIZE)))
                 self.frame_list.append(img)
         self.log("Sprite Created Successfully!")
         
         self.image = self.frame_list[self.frame_index]
         self.rect = self.image.get_rect()
-        self.rect.center = (x, y)
+        self.rect.midtop = (x + TILE_SIZE // 2, y + (TILE_SIZE - self.image.get_height()))
         
         
     def update_animation(self):
@@ -411,9 +519,16 @@ class Goal(pygame.sprite.Sprite):
                     
     def log(self, text = "", data = {}):
         msg = text.format(*data)
-        print("[GID: {}] {}".format(self.goal_id,msg))
+        if IS_DEBUG:
+            print("[GID: {}] {}".format(self.goal_id,msg))
         
     def draw(self):
+        self.rect.x += screen_scroll
+        
+        if SHOW_COLLISION_BOXES:
+            for side in range(4):
+                pygame.draw.rect(screen, (255,100,255), (self.rect.left - side, self.rect.top - side, self.image.get_width(), self.image.get_height()), 1)
+         
         screen.blit(self.image, self.rect)
         
         
@@ -425,16 +540,18 @@ class Marker(pygame.sprite.Sprite):
         self.marker_id = len(marker_list)
         
         img = pygame.image.load(MARKER_SPRITE_FILE_PATH.format(marker_type))
-        self.image = pygame.transform.scale(img, (int(img.get_width() * SPRITE_SCALING_MARKER), int(img.get_height() * SPRITE_SCALING_MARKER)))
+        self.image = pygame.transform.scale(img, (int(TILE_SIZE), int(TILE_SIZE)))
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
         self.log("Marker Generated for {}",{self.player_name})
         
     def log(self, text = "", data = {}):
         msg = text.format(*data)
-        print("[MID: {}] {}".format(self.marker_id,msg))
+        if IS_DEBUG:
+            print("[MID: {}] {}".format(self.marker_id,msg))
         
     def draw(self):
+        self.rect.x += screen_scroll
         screen.blit(self.image, self.rect)
         
 
@@ -446,16 +563,26 @@ class Hazard(pygame.sprite.Sprite):
         self.hazard_type = HAZARD_TYPE_LIST[hazard_type]
         
         img = pygame.image.load(HAZARD_SPRITE_FILE_PATH.format(self.hazard_type))
-        self.image = pygame.transform.scale(img, (int(img.get_width() * SPRITE_SCALING_HAZARD), int(img.get_height() * SPRITE_SCALING_HAZARD)))
+        self.image = pygame.transform.scale(img, (int(TILE_SIZE), int(TILE_SIZE)))
         self.rect = self.image.get_rect()
-        self.rect.center = (x, y)
+        
+        if hazard_type == 0:
+            self.rect.height = self.image.get_height() / 2
+        self.rect.midtop = (x + TILE_SIZE // 2, y + (TILE_SIZE - self.image.get_height()))
                     
                     
     def log(self, text = "", data = {}):
         msg = text.format(*data)
-        print("[HID: {}] {}".format(self.hazard_id,msg))
+        if IS_DEBUG:
+            print("[HID: {}] {}".format(self.hazard_id,msg))
         
     def draw(self):
+        self.rect.x += screen_scroll
+        
+        if SHOW_COLLISION_BOXES:
+            for side in range(4):
+                pygame.draw.rect(screen, (255,100,255), (self.rect.left - side, self.rect.top - side, self.image.get_width(), self.image.get_height()), 1)
+         
         screen.blit(self.image, self.rect)
         
         
@@ -485,93 +612,32 @@ item_group = world.item_group
 hazard_group = world.hazard_group
 goal_group = world.goal_group
 
-player_list = []
+player_active = False
+player = Optional[Player]
+player_start_x = world.player_start_position_x
+player_start_y = world.player_start_position_y
+
+dummy_list = []
+dead_dummy_count = 0
+
+strongest_dummy = Optional[Player]
+goal_position = world.goal_position
+new_index = 0
+furthest_index = -1
+
 marker_list = []
 name_list = get_names()
-    
+spawn_offset = 0
+interval = 0
 
 # -- Generate 'Players'
-print("--- [Generating {} Players] ---".format(PLAYER_POPULATION))
+if GENERATE_PLAYER:
+    player = generate_player(goal_position)
+    player_active = True
 
-for p_id in range(PLAYER_POPULATION):
-    name = name_list[random.randint(0, len(name_list) - 1)][0]
-    print("-- [Generating '{}' - PID: {}] --".format(name,p_id))
-    if USE_DYNAMIC_SPRITES:
-        sprite_id = random.randint(0,DYNAMIC_SPRITE_COUNT-1)
-    else:
-        sprite_id = 0
-    
-    if USE_SPREAD_START:
-        x = random.randint(50, SCREEN_WIDTH/2)
-        y = random.randint(tfy,SCREEN_HEIGHT/2)
-    else:    
-        x = PLAYER_START_POS_X
-        y = PLAYER_START_POS_Y
-    
-    player = Player(p_id, x, y, sprite_id, name)
-    player.log("Starts at: X{} Y{}", {player.rect.left, player.rect.top})
-    player_list.append(player)
-    player.log(" -- Player Generated Successfully! --\n")
-    
-print("--- [{}/{} Players Successfully Generated] ---\n".format(len(player_list), PLAYER_POPULATION))
-
-"""
-# -- Generate Items
-print("--- [Generating {} Items] ---".format(NUM_ITEMS))
-
-for i_id in range(NUM_ITEMS):
-    print("-- [Generating Item - IID: {}] --".format(i_id))
-    x = (i_id * 300) + 150
-    y = tfy - 30
-    item = Item(i_id, x, y)
-    item.log("Position: X{} Y{}", {item.rect.left, item.rect.top})
-    item_list.append(item)
-    item_group.add(item)
-    item.log(" -- Item Generated Successfully! --\n")
-    
-print("--- [{}/{} Items Successfully Generated] ---\n".format(len(item_list), NUM_ITEMS))
-
-
-# -- Generate Goals
-print("--- [Generating {} Goals] ---".format(NUM_GOALS))
-
-for g_id in range(NUM_GOALS):
-    print("-- [Generating Goal - GID: {}] --".format(g_id))
-    x = SCREEN_WIDTH - 200
-    y = tfy - 45
-    goal = Goal(g_id, x, y)
-    goal.log("Position: X{} Y{}", {goal.rect.left, goal.rect.top})
-    goal_list.append(goal)
-    goal_group.add(goal)
-    goal.log(" -- Goal Generated Successfully! --\n")
-    
-print("--- [{}/{} Goals Successfully Generated] ---\n".format(len(goal_list), NUM_GOALS))
-
-
-# -- Generate Hazards
-print("--- [Generating {} Hazards] ---".format(NUM_HAZARDS))
-
-for h_id in range(NUM_HAZARDS):
-    print("-- [Generating Hazard - HID: {}] --".format(h_id))
-    
-    x = SCREEN_WIDTH - 500
-    y = tfy - 30
-    
-    if USE_RANDOM_HAZARDS:
-        hazard_type = random.randint(0, HAZARD_TYPE_COUNT)
-    else:
-        hazard_type = 0
-        
-    hazard = Hazard(h_id, x, y, hazard_type)
-    hazard.log("Position: X{} Y{}", {hazard.rect.left, hazard.rect.top})
-    hazard_list.append(hazard)
-    hazard_group.add(hazard)
-    hazard.log(" -- Hazard Generated Successfully! --\n")
-    
-print("--- [{}/{} Hazards Successfully Generated] ---\n".format(len(goal_list), NUM_HAZARDS))
-"""
-
-
+# -- Generate 'Dummies' [TEMPORARY UNTIL AI CODED]
+if GENERATE_DUMMIES:
+    generate_dummies_bulk(spawn_offset,goal_position)
 
 # -- Begin Play
 run = True
@@ -579,47 +645,14 @@ print("\n --- Begin Play ---\n")
 
 while run:
     
-    # -- Update
+    # -- Update Game
     clock.tick(GAME_FRAME_RATE)
-    draw_bg()
-    
-    # -- Events
-    for event in pygame.event.get():
-        #quit
-        if event.type == pygame.QUIT:
-            run = False
-        
-        for player in player_list:
-            
-            if player.is_alive:
-                # -- Keyboard Press
-                if event.type == pygame.KEYDOWN:
-                    if any(key == event.key for key in LEFT_KEYS):
-                        player.moving_left = True
-                    if any(key == event.key for key in RIGHT_KEYS):
-                        player.moving_right = True
-                    if any(key == event.key for key in UP_KEYS):
-                        player.jump = True
-                    if event.key == pygame.K_ESCAPE:
-                        run = False
-
-                # -- Keyboard Release
-                if event.type == pygame.KEYUP:
-                    if any(key == event.key for key in LEFT_KEYS):
-                        player.moving_left = False
-                    if any(key == event.key for key in RIGHT_KEYS):
-                        player.moving_right = False
-            
-            
-    # -- Update World
-    world.draw()
+    draw_bg()       
         
     # -- Update Items
     for item in item_list:
         item.update_animation()
         item.draw()
-        #item_group.update()ddddddddd
-        #item_group.draw()
         
     # -- Update Goals
     for goal in goal_list:
@@ -635,13 +668,95 @@ while run:
         marker.draw()
     
     # -- Update Players
-    for player in player_list:
+    # - Events
+    for event in pygame.event.get():
+        #quit
+        if event.type == pygame.QUIT:
+            run = False
+        if GENERATE_PLAYER:
+            if player.is_alive:
+                # -- Keyboard Press
+                if event.type == pygame.KEYDOWN:
+                    if any(key == event.key for key in LEFT_KEYS):
+                        player.moving_left = True
+                    if any(key == event.key for key in RIGHT_KEYS):
+                        player.moving_right = True
+                    if any(key == event.key for key in UP_KEYS):
+                        player.jump = True
+                    if event.key == pygame.K_ESCAPE:
+                        run = False
+                # -- Keyboard Release
+                if event.type == pygame.KEYUP:
+                    if any(key == event.key for key in LEFT_KEYS):
+                        player.moving_left = False
+                    if any(key == event.key for key in RIGHT_KEYS):
+                        player.moving_right = False
+        
+    if GENERATE_PLAYER:       
         if player.is_alive:
-            player.move()
-            player.update_animation()
             player.update()
-            player.draw()
+        else:
+            screen_scroll = 0
+            player_active = False
             
+    # -- Update Dummies
+    if GENERATE_DUMMIES:
+        dummy_count = 0
+
+            
+        
+        for index, dummy in enumerate(dummy_list):
+            if furthest_index != -1:
+                if index != furthest_index:
+                    if dummy.distance_to_target < dummy_list[furthest_index].distance_to_target or not dummy_list[furthest_index].is_alive:
+                        new_index = index
+                    else:
+                        dummy.followed = False
+            else:
+                new_index = index
+                dummy.followed = True    
+            
+            if dummy.is_alive:
+                if dummy.is_in_air:
+                    dummy.jump = False
+                else:
+                    do_jump = random.randint(0,10)
+                    jump_tolerance = 10
+                    dummy.jump = do_jump >= jump_tolerance
+                 
+                dummy.update()
+                dummy_count += 1
+        
+        # - Set new furthest Dummy
+        if new_index != furthest_index:
+            if not furthest_index == -1:
+                dummy_list[furthest_index].followed = False
+            dummy = dummy_list[new_index]
+            furthest_index = new_index
+            dummy.log("Became the furthest dummy at {}",{dummy.distance_to_target})
+            if not player_active:
+                dummy.followed = True
+
+        # - Respawn Dummies when they're all dead [Deactivated temporarily]
+        if dummy_count <= 0:
+            #generate_dummies_bulk(spawn_offset,goal_position)
+            strongest_dummy.log("is the current strongest dummy at {}!",{strongest_dummy.score})
+            print("=== Strongest Dummy was: {} ===".format(strongest_dummy.player_tag))
+            screen_scroll = 0
+            run = False
+            
+        #FOR DEBUG
+        if interval > 20:
+            print("Currently following          {}".format(dummy_list[furthest_index].player_tag))
+            print("Their [.followed] is         {}".format(dummy_list[furthest_index].followed))
+            print("The [screen_scroll] is       {}".format(screen_scroll))
+            interval = 0
+        else:
+            interval += 1
+            
+        
+    # -- Update World
+    world.draw()
     
     pygame.display.update()        
 

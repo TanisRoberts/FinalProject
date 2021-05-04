@@ -10,3 +10,8 @@ https://www.w3schools.com/python/python_operators.asp
 
 
 CURRENT VIDEO: https://www.youtube.com/watch?v=JTM8_pcQOUU&list=PLjcN1EyupaQm20hlUE11y9y8EY2aXLpnv&index=11
+
+background research before the methodology
+Highlight the AI section, include a research
+Put what is a neural network in background research
+Flesh out game and add multiple levels for singleplayer, plus start and level complete screens

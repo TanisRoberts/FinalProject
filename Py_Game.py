@@ -14,144 +14,137 @@ pygame.font.init()
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption(SCREEN_TITLE)
 clock = pygame.time.Clock()
-name_font = pygame.font.SysFont(CHARACTER_FONT, NAME_FONT_SIZE)
 
-screen_scroll = 0
-total_scroll = 0
-goal_position = 0
-wall_list = []
-marker_list = []
-item_group = pygame.sprite.Group()
-hazard_group = pygame.sprite.Group()
-goal_group = pygame.sprite.Group()
-laser_position = 0
-name_list = []
+global_counter = 0
 
-game_mode = 0
+pygame.display.update()
+
 #Game modes:
 # - 1 : Singleplayer
 # - 2 : Dummies
 # - 3 : Smarties
 
-
-def draw_bg():
-    screen.fill(SCREEN_BACKGROUND_COLOUR)
-
-def get_names():
-    print("--- [Retrieving Player Names] ---")
-    
-    
-    with open(NAME_FILE_PATH, newline='') as f:
-        reader = csv.reader(f)
-        data = list(reader)
-    
-    nl = data
-    
-    print(nl)
-    print(" -- {} Player Names Retrieved! --\n".format(len(nl)))   
-    return nl
-
-def create_death_marker(player):
-    global strongest_dummy
-    
-    if player.player_type == 'Dummy':
-        if len(marker_list) == 0:
-            marker_type = 0
-            strongest_dummy = player
-        else:
-            marker_type = 1
-
-            if player.score > strongest_dummy.score:
-                strongest_dummy = player
-                player.log("Is the strongest dummy!")
-                
-    elif player.player_type == 'Player':
-        marker_type = 2
-        
-    else:
-        marker_type = 1
-            
-        
-    marker = Marker(player.get_center_x(), player.get_center_y(), marker_type, player.player_tag)
-    marker_list.append(marker)
-
-def generate_player(goal_position):
-    print("--- [Generating Player] ---")
-    p_id = 0
-    name = name_list[random.randint(0, len(name_list) - 1)][0]
-    print("-- [Generating '{}' - PID: {}] --".format(name,p_id))
-    if USE_DYNAMIC_SPRITES:
-        sprite_id = random.randint(0,DYNAMIC_SPRITE_COUNT-2)
-    else:
-        sprite_id = 6
-    player = Player(p_id, player_start_x, player_start_y, sprite_id, name, 'Player', goal_position)
-    player.log("Starts at: X{} Y{}", {player.rect.left, player.rect.top})
-    player.log(" -- Player Generated Successfully! --\n")
-
-    print("--- [Player '{}' Successfully Generated] ---\n".format(player.player_tag))
-    return player
-
-def generate_dummies_bulk(offset, goal_position):
-    first_set = False
-    print("--- [Generating {bat} batches of {pop} Dummies] ---".format(pop= DUMMY_POPULATION, bat= DUMMY_BATCHES))
-
-    for b_id in range(DUMMY_BATCHES):
-        #Set Batch Sprite
-        if USE_DYNAMIC_SPRITES:
-            sprite_id = random.randint(0,DYNAMIC_SPRITE_COUNT-2)
-        else:
-            sprite_id = 0
-                
-        for n in range(DUMMY_POPULATION):
-            
-            name = name_list[random.randint(0, len(name_list) - 1)][0]
-            d_id = len(dummy_list)
-            print("-- [Generating '{name}' in batch {bid} - DID: {did}] --".format(name= name, did= d_id, bid= b_id))
-
-            if USE_SPREAD_START:
-                x = offset + random.randint(player_start_x - SPREAD_START_VARIANCE, player_start_x + SPREAD_START_VARIANCE)
-                y = random.randint(player_start_y - SPREAD_START_VARIANCE, player_start_y + SPREAD_START_VARIANCE)
-            else:    
-                x = player_start_x
-                y = player_start_y
-
-            dummy = Player(d_id, x, y, sprite_id, name, 'Dummy', goal_position)
-            dummy.log("Starts at: X{} Y{}", {dummy.rect.left, dummy.rect.top})
-            dummy.moving_right = True
-            dummy_list.append(dummy)
-            dummy.log(" -- Dummy Generated Successfully! --\n")
-
-    print("--- [{}/{} Dummies Successfully Generated] ---\n".format(len(dummy_list), (DUMMY_POPULATION * DUMMY_BATCHES)))
-
-
 class World():
-    def __init__(self):
+    def __init__(self, game_mode= 0):
+        self.level = 0
+        self.world_data = []
+        self.map_file_path = ""
+        self.name_list = []
+        self.game_mode = game_mode
+        self.only_show_closest_player = ONLY_SHOW_CLOSEST_PLAYER
+        
         self.player_start_position_x = PLAYER_START_POS_X
         self.player_start_position_y = PLAYER_START_POS_Y
-        
         self.goal_position = 0
+        self.generation = 0
+        
+        self.ui = Optional[UIController]
+        self.game_mode = 0
         
         self.world_list = []
         self.wall_list = []
-        self.item_list = []
-        self.goal_list = []
-        self.hazard_list = []
         self.bg_list = []
+        self.marker_list = []
         
-        self.item_group = pygame.sprite.Group()
-        self.hazard_group = pygame.sprite.Group()
-        self.goal_group = pygame.sprite.Group()
+        self.screen_scroll = 0
+        self.total_scroll = 0
+        
+        self.object_group = pygame.sprite.Group()
         self.wall_group = pygame.sprite.Group()
         
+        self.tile_img_list = []
+        self.laser = Laser()
+        self.laser_position = 0
+        self.num_items = 0
+        
+        
+    def load_world(self, level_num= 0):
+        self.level = level_num
+        self.map_file_path = MAP_CSV_PATH.format(MAP_CSV_FILE_LIST[level_num])
+        
+        self.load_tiles()
+        self.generate_world_data()
+        self.generate_ui_controller()    
+        
+    def load_name_list(self):
+        print("--- [Retrieving Player Names] ---")
+
+        with open(NAME_FILE_PATH, newline='') as f:
+            reader = csv.reader(f)
+            data = list(reader)
+
+        nl = data
+
+        print(nl)
+        print(" -- {} Player Names Retrieved! --\n".format(len(nl)))   
+        self.name_list = nl
+        
+        
+    def get_name(self):
+        return self.name_list[random.randint(0, len(self.name_list) - 1)][0]
+        
+        
+    def create_death_marker(self, player):
+    
+        if player.player_type == 'Dummy':
+            if len(self.marker_list) == 0:
+                marker_type = 0
+            else:
+                marker_type = 1
+        elif player.player_type == 'Player':
+            marker_type = 2
+        else:
+            marker_type = 1   
+
+        marker = Marker(player.get_center_x(), player.get_center_y(), marker_type, player.player_tag)
+        self.marker_list.append(marker)
+        
+    def set_game_mode(self,game_mode):
+        self.game_mode = game_mode
+        self.ui = Optional[UIController]
+        self.world_list = []
+        self.wall_list = []
+        self.bg_list = []
+        self.marker_list = []
+        
+        self.screen_scroll = 0
+        self.total_scroll = 0
+        
+        self.object_group = pygame.sprite.Group()
+        self.wall_group = pygame.sprite.Group()
         
         self.tile_img_list = []
+        self.laser = Laser()
+        self.laser_position = 0
+        
+        if game_mode == 3:
+            self.generation += 1
+        
+    def load_tiles(self):    
         for x in range(TILE_TYPES):
             img = pygame.image.load(MAP_TILES_FILE_PATH.format(x))
             img = pygame.transform.scale(img, (int(TILE_SIZE), int(TILE_SIZE)))
             self.tile_img_list.append(img)
+              
+    def generate_ui_controller(self):
+        self.ui = UIController()
+        self.ui.set_screen_ui(self.game_mode)
+    
+    def generate_world_data(self):
+        self.world_data = []
+        tile_id = 0
+        self.num_items = 0
+        for row in range(ROWS):
+            r = [-1] * COLS
+            self.world_data.append(r)
+
+        with open(self.map_file_path, newline='') as mapfile:
+            reader = csv.reader(mapfile, delimiter=',')
+            for x, row in enumerate(reader):
+                for y, tile in enumerate(row):
+                    self.world_data[x][y] = int(tile)
         
-    def process_data(self, data):
-        for y, row in enumerate(data):
+        for y, row in enumerate(self.world_data):
             for x, tile in enumerate(row):
                 if tile >= 0:
                     x_pos = x * TILE_SIZE
@@ -164,41 +157,85 @@ class World():
                     tile_data = (img, img_rect)
                     
                     
-                    if tile <= 16:
+                    if tile <= 15:
                         #Create Wall Tile
                         self.wall_list.append(tile_data)
-                        self.wall_group.add()
                         self.world_list.append(tile_data)
+                    if tile == 16:
+                        self.world_list.append(tile_data)    
                     elif tile >= HAZARD_TILE_MIN and tile <= HAZARD_TILE_MAX:
                         #Create Hazard Object
                         h_type = tile - HAZARD_TILE_MIN
-                        hazard = Hazard(len(self.hazard_list), x_pos, y_pos, h_type)
-                        self.hazard_group.add(hazard)
-                        self.hazard_list.append(hazard)
+                        hazard = Hazard(tile_id, x_pos, y_pos, h_type)
+                        self.object_group.add(hazard)
                     elif tile >= BG_TILE_MIN and tile <= BG_TILE_MAX:
                         #Create Background Tile
                         self.bg_list.append(tile_data)
                         self.world_list.append(tile_data)
                     elif tile == ITEM_TILE_NUM:
                         #Create Item Object
-                        item = Item(len(self.item_list), x_pos, y_pos)
-                        self.item_group.add(item)
-                        self.item_list.append(item)
+                        item = Item(tile_id, x_pos, y_pos)
+                        self.object_group.add(item)
+                        self.num_items += 1
                     elif tile == GOAL_TILE_NUM:
                         #Create Goal Object
-                        goal = Goal(len(self.goal_list), x_pos, y_pos)
+                        goal = Goal(tile_id, x_pos, y_pos)
                         self.goal_position = x_pos
-                        self.goal_group.add(goal)
-                        self.goal_list.append(goal)
+                        self.object_group.add(goal)
                     elif tile == PLAYER_START_TILE:
                         #Store Player Start Coordinates
                         self.player_start_position_x = x_pos
                         self.player_start_position_y = y_pos
+
+                    tile_id += 1
+                   
                     
-    def draw(self):
+    def generate_player(self, p_id, sprite_id= 0, p_name= -1, p_type= 'Player'):
+        if p_name == -1:
+            p_name = self.get_name()
+            
+        player = Player(p_id= p_id,
+                             x= self.player_start_position_x,
+                             y= self.player_start_position_y,
+                             sprite_id= sprite_id,
+                             p_name= p_name,
+                             p_type= p_type,
+                             goal_position= self.goal_position)
+        
+        return player
+                    
+
+    def update_markers(self):
+        # -- Update Markers
+        for marker in self.marker_list:
+            marker.draw()
+                    
+    
+    def update_laser(self):
+        if self.game_mode == 3: # Only if in smarty mode
+            self.laser_position = self.laser.update()
+    
+    def update_ui(self,data):
+        self.ui.update_labels(data)
+                    
+    def draw_background(self):
+        screen.fill(SCREEN_BACKGROUND_COLOUR)
+                    
+                    
+    def draw_world(self):
+        self.draw_background()
         for tile in self.world_list:
-            tile[1][0] += screen_scroll
-            screen.blit(tile[0], tile[1])
+            tile[1][0] += self.screen_scroll
+            if (0 - TILE_SIZE) < tile[1][0] < (SCREEN_WIDTH + TILE_SIZE) and (0 - TILE_SIZE) < tile[1][1] < (SCREEN_HEIGHT):
+                screen.blit(tile[0], tile[1])       
+    
+    def update(self):
+        self.draw_world()
+        self.object_group.update()
+        self.update_markers()
+        self.update_laser()
+        self.ui.draw()
+        return self.ui.update()
 
 
 class Player(pygame.sprite.Sprite):
@@ -214,19 +251,27 @@ class Player(pygame.sprite.Sprite):
         self.fitness = 0
         self.collected_item_list = []
         self.collected_goal = False
+        self.distance_travelled = 0
         
         self.goal_position = goal_position
         self.distance_to_target = 0
         self.prev_distance_to_target = 0
         self.total_scroll = 0
+        self.p_type = p_type
         
-        if p_type == 'Player':
+        if self.p_type == 'Player':
             self.followed = True
+            self.name_tag_active = False
         else:
             self.followed = False
+            self.name_tag_active = True
             
-        
-        
+        if self.p_type == 'Smarty':
+            self.scan_active = True
+        else:
+            self.scan_active = False
+            
+            
         # -- Visual
         self.frame_list = []
         self.frame_index = 0
@@ -284,8 +329,6 @@ class Player(pygame.sprite.Sprite):
         self.width = self.image.get_width()
         self.height = self.image.get_height()
         
-        self.name_text_surface = name_font.render(self.player_tag, False, NAME_FONT_COLOUR)
-        
         # -- Action
         self.moving_left = False
         self.moving_right = False
@@ -296,6 +339,26 @@ class Player(pygame.sprite.Sprite):
         self.jump = False
         self.is_in_air = True
         
+        # -- Name Tag
+        self.name_tag = UINametag(e_id= self.player_id,
+                                    text= self.player_tag,
+                                    position= (0,0),
+                                    active= self.name_tag_active)
+        
+        # -- Scanning
+        self.scan_active = True
+        
+        self.scan_top = False
+        self.scan_mid = False
+        self.scan_bot = False
+        self.scan_x = 0
+        self.scan_y = 0
+        self.scan_dot_radius = SCAN_DOT_RADIUS
+        self.scan_dot_thickness = SCAN_DOT_THICKNESS
+        
+        self.scan_ground = False
+        self.scan_ground_tolerance = GROUND_TOLERANCE
+        self.scan_ground_rect = (0, 0, 0, 0)
         
     def update_animation(self):
         if self.is_in_air:
@@ -331,118 +394,247 @@ class Player(pygame.sprite.Sprite):
         if SHOW_CLOSEST_PLAYER_LOGS and self.followed:
             print("[Closest is {tag}] {msg}".format(tag= self.player_tag, msg= msg))
                 
-        
+    def get_name_tag_pos(self): return ((self.get_center_x() - (self.name_tag.width // 2)),(self.rect.top - (self.name_tag.height + 10)))
+    
     def get_center_x(self): return self.rect.left + (self.rect.width / 2)
     
     def get_center_y(self): return self.rect.top + (self.rect.height / 2) 
+    
+    def scan(self):
+        if self.scan_active:
+            if self.x_direction == 1:
+                self.scan_x = self.rect.right + (TILE_SIZE // 2) + TILE_SIZE
+            else:
+                self.scan_x = self.rect.left - (TILE_SIZE // 2) - TILE_SIZE
+                
+            self.scan_y = self.rect.bottom - (TILE_SIZE // 2)
+            
+            self.scan_top = False
+            self.scan_mid = False
+            self.scan_bot = False
+            self.scan_ground = False
+            
+            for obj in world.wall_list:
+                if obj[1].collidepoint((self.scan_x, self.scan_y - TILE_SIZE)):
+                    self.scan_top = 1
+                    
+                if obj[1].collidepoint((self.scan_x, self.scan_y)):
+                    self.scan_mid = 1
+                    
+                if obj[1].collidepoint((self.scan_x, self.scan_y + TILE_SIZE)):
+                    self.scan_bot = 1
+                    
+                if obj[1].colliderect(self.scan_ground_rect):
+                    self.scan_ground = True
+                
+            for obj in world.object_group.sprites():
+                #check if top dot is active, and set scan_top to object_type
+                if obj.rect.collidepoint((self.scan_x, self.scan_y - TILE_SIZE)):
+                    if obj.type == 'hazard':
+                        self.scan_top = -1
+                    elif obj.type == 'item' and not any(item_id == obj.object_id for item_id in self.collected_item_list):
+                        self.scan_top = 2
+                    elif obj.type == 'goal':
+                        self.scan_top = 3
+                        
+                #check if middle dot is active, and set scan_mid to object_type
+                if obj.rect.collidepoint((self.scan_x, self.scan_y)):
+                    if obj.type == 'hazard':
+                        self.scan_mid = -1
+                    elif obj.type == 'item' and not any(item_id == obj.object_id for item_id in self.collected_item_list):
+                        self.scan_mid = 2
+                    elif obj.type == 'goal':
+                        self.scan_mid = 3
+            
+                #check if bottom dot is active, and set scan_bot to object_type
+                if obj.rect.collidepoint((self.scan_x, self.scan_y + TILE_SIZE)):
+                    if obj.type == 'hazard':
+                        self.scan_bot = -1
+                    elif obj.type == 'item' and not any(item_id == obj.object_id for item_id in self.collected_item_list):
+                        self.scan_bot = 2
+                    elif obj.type == 'goal':
+                        self.scan_bot = 3
+            
+            
+        else:
+            return False
+            
+    def draw_scan_dots(self):
+
+        radius = 5
+        thickness = 2
+         
+        #top dot
+        if self.scan_top == -1: # scanned a hazard
+            pygame.draw.circle(screen, (255,0,0), (self.scan_x, self.scan_y - TILE_SIZE), radius, 0)
+        elif self.scan_top == 1: # scanned the ground
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x, self.scan_y - TILE_SIZE), radius, 0)
+        elif self.scan_top == 2: # scanned an item
+            pygame.draw.circle(screen, (0,0,255), (self.scan_x, self.scan_y - TILE_SIZE), radius, 0)
+        elif self.scan_top == 3: # scanned the goal
+            pygame.draw.circle(screen, (0,255,0), (self.scan_x, self.scan_y - TILE_SIZE), radius, 0)
+        else:
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x, self.scan_y - TILE_SIZE), radius, thickness)
+            
+        
+        #middle dot
+        if self.scan_mid == -1: # scanned a hazard
+            pygame.draw.circle(screen, (255,0,0), (self.scan_x, self.scan_y), radius, 0)
+        elif self.scan_mid == 1: # scanned the ground
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x, self.scan_y), radius, 0)
+        elif self.scan_mid == 2: # scanned an item
+            pygame.draw.circle(screen, (0,0,255), (self.scan_x, self.scan_y), radius, 0)
+        elif self.scan_mid == 3: # scanned the goal
+            pygame.draw.circle(screen, (0,255,0), (self.scan_x, self.scan_y), radius, 0)
+        else:
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x, self.scan_y), radius, thickness)
+        
+        #bottom dot
+        if self.scan_bot == -1: # scanned a hazard
+            pygame.draw.circle(screen, (255,0,0), (self.scan_x, self.scan_y + TILE_SIZE), radius, 0)
+        elif self.scan_bot == 1: # scanned the ground
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x, self.scan_y + TILE_SIZE), radius, 0)
+        elif self.scan_bot == 2: # scanned an item
+            pygame.draw.circle(screen, (0,0,255), (self.scan_x, self.scan_y + TILE_SIZE), radius, 0)
+        elif self.scan_bot == 3: # scanned the goal
+            pygame.draw.circle(screen, (0,255,0), (self.scan_x, self.scan_y + TILE_SIZE), radius, 0)
+        else:
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x, self.scan_y + TILE_SIZE), radius, thickness)
+            
+        #ground dot
+        if self.scan_ground: # did not scan the ground
+            pygame.draw.rect(screen, (255,255,255), self.scan_ground_rect, width= 1)
+        else: # scanned the ground
+            pygame.draw.rect(screen, (255,255,255), self.scan_ground_rect)
           
     def move(self):
-        global screen_scroll, total_scroll, w
-        dx = 0
-        dy = 0
-        
-        if self.moving_left:
-            dx = -self.speed
-            self.x_direction = -1
-            self.flip = True
-                        
-        if self.moving_right:
-            dx = self.speed
-            self.x_direction = 1
-            self.flip = False
-        
-        if self.jump and not self.is_in_air:
-            self.vel_y = -PLAYER_JUMP_IMPULSE
-            self.jump = False
-            self.is_in_air = True
-        
-        self.vel_y += GRAVITY_CONSTANT
-        if self.vel_y > PLAYER_TERMINAL_VELOCITY:
-            self.vel_y = PLAYER_TERMINAL_VELOCITY
-        dy += self.vel_y
-        
-        for tile in wall_list:
-            if tile[1].colliderect(self.rect.x + dx, self.rect.y, self.width, self.height):
-                dx = 0
+        if self.is_alive:
+            global world
+            dx = 0
+            dy = 0
+            self.prev_distance_to_target = self.distance_to_target
+
+            if self.moving_left:
+                dx = -self.speed
+                self.x_direction = -1
+                self.flip = True
+
+            if self.moving_right:
+                dx = self.speed
+                self.x_direction = 1
+                self.flip = False
+
+            if self.jump and not self.is_in_air:
+                self.vel_y = -PLAYER_JUMP_IMPULSE
+                self.jump = False
+                #self.is_in_air = True
+            elif self.jump and self.is_in_air:
+                self.jump = False
+
+            self.vel_y += GRAVITY_CONSTANT
+            if self.vel_y > PLAYER_TERMINAL_VELOCITY:
+                self.vel_y = PLAYER_TERMINAL_VELOCITY
+            dy += self.vel_y
+
+
+            if self.scan_ground:
+                self.is_in_air = False
+            else: 
+                self.is_in_air = True
                 
-            if tile[1].colliderect(self.rect.x, self.rect.y + dy, self.width, self.height):
-                if self.vel_y < 0:
-                    self.vel_y = 0
-                    dy = tile[1].bottom - self.rect.top
-                
-                if self.vel_y >= 0:
-                    self.vel_y = 0
-                    dy = tile[1].top - self.rect.bottom
-                    self.is_in_air = False
-        
-        
-        self.rect.x += dx
-        self.rect.y += dy
-        
-        if self.followed:
-            if (self.rect.right > SCREEN_WIDTH - SCROLL_THRESHOLD and total_scroll < (COLS * TILE_SIZE) - SCREEN_WIDTH):
-                self.rect.x -= dx
-                screen_scroll = -dx 
-                self.total_scroll -= -dx
-                
-            elif (self.rect.left < (SCROLL_THRESHOLD / 4) and total_scroll > abs(dx)):
-                self.rect.x -= dx
-                screen_scroll = -dx
-                self.total_scroll -= -dx
-                
+            for tile in world.wall_list:
+                if tile[1].colliderect(self.rect.x + dx, self.rect.y, self.width, self.height):
+                    dx = 0
+
+                if tile[1].colliderect(self.rect.x, self.rect.y + dy, self.width, self.height):
+                    if self.vel_y < 0:
+                        print("a")
+                        self.vel_y = 0
+                        dy = tile[1].bottom - self.rect.top
+
+                    elif self.vel_y >= 0:
+                        self.vel_y = 0
+                        dy = tile[1].top - self.rect.bottom
+                        #self.is_in_air = False
+            
+
+            self.rect.x += dx
+            self.rect.y += dy
+            self.distance_travelled += abs(dx)
+
+            if self.followed:
+                if (self.rect.right > SCREEN_WIDTH - SCROLL_THRESHOLD and world.total_scroll < (COLS * TILE_SIZE) - SCREEN_WIDTH):
+                    self.rect.x -= dx
+                    world.screen_scroll = -dx 
+                    world.total_scroll -= -dx
+
+                elif (self.rect.left < (SCROLL_THRESHOLD / 4) and world.total_scroll > abs(dx)):
+                    self.rect.x -= dx
+                    world.screen_scroll = -dx
+                    world.total_scroll -= -dx
+
+                else:
+                    world.screen_scroll = 0
             else:
-                screen_scroll = 0
-        else:
-            self.rect.x += screen_scroll
+                self.rect.x += world.screen_scroll
+                
+            self.distance_to_target = abs(world.goal_position - self.rect.right)
+            
+            self.scan_ground_rect = (self.rect.left + (self.rect.width // 4), self.rect.bottom + self.scan_ground_tolerance, self.rect.width // 2, 4)
+                
+            self.name_tag.update_value(self.get_name_tag_pos())
                      
     def die(self, msg):
+        global world
         self.is_alive = False
-        create_death_marker(self)
+        self.followed = False
+        world.create_death_marker(self)
         self.log("died by {}!",{msg})
         
     def check_collisions(self):
+        global world
         if self.is_alive:
-            hazard_hit_list = pygame.sprite.spritecollide(self, hazard_group, False)
-            for hazard in hazard_hit_list:
-                self.die(hazard.hazard_type)
-                return 0
-                
-            item_hit_list = pygame.sprite.spritecollide(self, item_group, False)
-            for item in item_hit_list:
-                if not any(item_id == item.item_id for item_id in self.collected_item_list):
-                    self.score += ITEM_SCORE
-                    self.collected_item_list.append(item.item_id)
-                    self.log("Score: {}",{self.score})
-                    return 1
-
-            goal_hit_list = pygame.sprite.spritecollide(self, goal_group, False)
-            for goal in goal_hit_list:
-                if not self.collected_goal:
-                    self.score += GOAL_SCORE
-                    self.collected_goal = True
-                    self.log("Score: {}",{self.score})
-                    return 2
             
-            if self.score >= WIN_SCORE:
+            hit_list = pygame.sprite.spritecollide(self, world.object_group, False)
+            for obj in hit_list:
+                if obj.type == 'hazard':
+                    self.die(obj.hazard_type)
+                    return 0
+                elif obj.type == 'item':
+                    if not any(item_id == obj.object_id for item_id in self.collected_item_list):
+                        self.score += ITEM_SCORE
+                        self.collected_item_list.append(obj.object_id)
+                        self.log("Score: {}",{self.score})
+                        return 1
+                elif obj.type == 'goal':
+                    if not self.collected_goal:
+                        self.score += GOAL_SCORE
+                        self.collected_goal = True
+                        self.log("Score: {}",{self.score})
+                        return 2
+            
+            if self.score >= ((world.num_items * ITEM_SCORE) + GOAL_SCORE):
                 self.die("winning")
                 return 0
             
             #Kill the player if they get caught by the laser
-            global laser_position
-            if self.rect.x <= laser_position:
-                self.die('the laser')
-                return 0
+            if self.p_type == 'Smarty':
+                if self.rect.x <= world.laser_position:
+                    self.die('the laser')
+                    return 0
                 
         else:
             return False
             
-    def get_distance_to_target(self):
+    def get_progress(self):
         if self.is_alive:
-            global goal_position
-            self.prev_distance_to_target = self.distance_to_target
-            return abs(goal_position - self.rect.right)
+            global world
+            if self.distance_to_target > self.prev_distance_to_target:
+                return True
+            else:
+                return False
         else: 
-            return 10000  
+            return False 
     
     def get_is_moving(self):
         if self.moving_right:
@@ -459,26 +651,26 @@ class Player(pygame.sprite.Sprite):
             return 1
                 
     def draw(self):
-        if (ONLY_SHOW_CLOSEST_PLAYER and self.followed) or not ONLY_SHOW_CLOSEST_PLAYER:
+        global world
+        if (world.only_show_closest_player and self.followed) or not world.only_show_closest_player:
             screen.blit(pygame.transform.flip(self.image, self.flip, False), self.rect)
 
             if SHOW_COLLISION_BOXES:
-                for side in range(4):
-                    pygame.draw.rect(screen, COLLISION_BOX_COLOUR, (self.rect.left - side, self.rect.top - side, self.image.get_width(), self.image.get_height()), 1)
+                pygame.draw.rect(screen, COLLISION_BOX_COLOUR, self.rect, width= 2)
 
             if HIGHLIGHT_CLOSEST_PLAYER and self.followed:
-                for side in range(4):
-                    pygame.draw.rect(screen, HIGHLIGHT_COLOUR, (self.rect.left - side, self.rect.top - side, self.image.get_width(), self.image.get_height()), 1)
+                pygame.draw.rect(screen, HIGHLIGHT_COLOUR, self.rect, width= 2)
 
-            name_tag_x = self.get_center_x() - (self.name_text_surface.get_width() / 2)
-            name_tag_y = self.rect.top - (self.name_text_surface.get_height() + 10)
-            screen.blit(self.name_text_surface, (name_tag_x , name_tag_y))
+            self.name_tag.update()
+            
+            if self.followed:
+                self.draw_scan_dots()
  
     def update(self):
         self.move()
-        self.distance_to_target = self.get_distance_to_target()
         self.update_animation()
         collide = self.check_collisions()
+        self.scan()
         self.draw()
         return collide
         
@@ -487,11 +679,12 @@ class Item(pygame.sprite.Sprite):
     def __init__(self, i_id, x = 0, y = 0):
         super().__init__()
         
-        self.item_id = i_id
+        self.object_id = i_id
         
         self.frame_list = []
         self.frame_index = 0
         self.last_frame_update = pygame.time.get_ticks()
+        self.type = 'item'
         
         self.log("Creating Sprite From Frames...")
         for i in range(ITEM_ANIM_FRAME_COUNT):
@@ -525,27 +718,32 @@ class Item(pygame.sprite.Sprite):
     def log(self, text = "", data = {}):
         msg = text.format(*data)
         if SHOW_ITEM_LOGS:
-            print("[IID: {}] {}".format(self.item_id,msg))
+            print("[IID: {}] {}".format(self.object_id,msg))
         
     def draw(self):
-        self.rect.x += screen_scroll
+        global world
+        self.rect.x += world.screen_scroll
         
         if SHOW_COLLISION_BOXES:
-            for side in range(4):
-                pygame.draw.rect(screen, COLLISION_BOX_COLOUR, (self.rect.left - side, self.rect.top - side, self.image.get_width(), self.image.get_height()), 1)
+            pygame.draw.rect(screen, COLLISION_BOX_COLOUR, self.rect, width= 2)
                 
         screen.blit(self.image, self.rect)
+        
+    def update(self):
+        self.update_animation()
+        self.draw()
         
     
 class Goal(pygame.sprite.Sprite):
     def __init__(self, g_id, x = 0, y = 0):
         super().__init__()
         
-        self.goal_id = g_id
+        self.object_id = g_id
         
         self.frame_list = []
         self.frame_index = 0
         self.last_frame_update = pygame.time.get_ticks()
+        self.type = 'goal'
         
         self.log("Creating Sprite From Frames...")
         for i in range(GOAL_ANIM_FRAME_COUNT):
@@ -578,27 +776,31 @@ class Goal(pygame.sprite.Sprite):
     def log(self, text = "", data = {}):
         msg = text.format(*data)
         if SHOW_GOAL_LOGS:
-            print("[GID: {}] {}".format(self.goal_id,msg))
+            print("[GID: {}] {}".format(self.object_id,msg))
         
     def draw(self):
-        global goal_position
+        global world
         
-        self.rect.x += screen_scroll
-        goal_position = self.rect.x
+        self.rect.x += world.screen_scroll
+        world.goal_position = self.rect.x
         
         if SHOW_COLLISION_BOXES:
-            for side in range(4):
-                pygame.draw.rect(screen, COLLISION_BOX_COLOUR, (self.rect.left - side, self.rect.top - side, self.image.get_width(), self.image.get_height()), 1)
+            pygame.draw.rect(screen, COLLISION_BOX_COLOUR, self.rect, width= 2)
          
         screen.blit(self.image, self.rect)
+        
+    def update(self):
+        self.update_animation()
+        self.draw()
         
         
 class Marker(pygame.sprite.Sprite):
     def __init__(self, x = 0, y = 0, marker_type = 1, p_name = ""):
+        global world
         super().__init__()
-
+        
         self.player_name = p_name
-        self.marker_id = len(marker_list)
+        self.object_id = len(world.marker_list)
         
         img = pygame.image.load(MARKER_SPRITE_FILE_PATH.format(marker_type))
         self.image = pygame.transform.scale(img, (int(TILE_SIZE), int(TILE_SIZE)))
@@ -609,10 +811,11 @@ class Marker(pygame.sprite.Sprite):
     def log(self, text = "", data = {}):
         msg = text.format(*data)
         if SHOW_MARKER_LOGS:
-            print("[MID: {}] {}".format(self.marker_id,msg))
+            print("[MID: {}] {}".format(self.object_id,msg))
         
     def draw(self):
-        self.rect.x += screen_scroll
+        global world
+        self.rect.x += world.screen_scroll
         screen.blit(self.image, self.rect)
         
 
@@ -620,31 +823,33 @@ class Hazard(pygame.sprite.Sprite):
     def __init__(self, h_id, x = 0, y = 0, hazard_type = 0):
         super().__init__()
         
-        self.hazard_id = h_id
+        self.object_id = h_id
         self.hazard_type = HAZARD_TYPE_LIST[hazard_type]
+        self.type = 'hazard'
         
         img = pygame.image.load(HAZARD_SPRITE_FILE_PATH.format(self.hazard_type))
         self.image = pygame.transform.scale(img, (int(TILE_SIZE), int(TILE_SIZE)))
         self.rect = self.image.get_rect()
         
-        if hazard_type == 0:
-            self.rect.height = self.image.get_height() / 2
         self.rect.midtop = (x + TILE_SIZE // 2, y + (TILE_SIZE - self.image.get_height()))
                     
                     
     def log(self, text = "", data = {}):
         msg = text.format(*data)
         if SHOW_HAZARD_LOGS:
-            print("[HID: {}] {}".format(self.hazard_id,msg))
+            print("[HID: {}] {}".format(self.object_id,msg))
         
     def draw(self):
-        self.rect.x += screen_scroll
+        global world
+        self.rect.x += world.screen_scroll
         
         if SHOW_COLLISION_BOXES:
-            for side in range(4):
-                pygame.draw.rect(screen, COLLISION_BOX_COLOUR, (self.rect.left - side, self.rect.top - side, self.image.get_width(), self.image.get_height()), 1)
+            pygame.draw.rect(screen, COLLISION_BOX_COLOUR, self.rect, width= 2)
          
         screen.blit(self.image, self.rect)
+        
+    def update(self):
+        self.draw()
     
 class Laser():
     def __init__(self):
@@ -652,26 +857,55 @@ class Laser():
         self.x_pos = 0
         self.width = LASER_WIDTH
         
-    def move(self):
-        self.x_pos += self.speed 
-        
     def draw(self):
-        self.x_pos += screen_scroll
+        global world
+        self.x_pos += self.speed 
+        self.x_pos += world.screen_scroll
         pygame.draw.line(surface= screen,
                          color= LASER_COLOUR,
                          start_pos= (self.x_pos, 0),
                          end_pos= (self.x_pos, SCREEN_HEIGHT),
                          width= self.width)
-        
-    def update(self):
-        self.move()
-        self.draw()
         return self.x_pos
         
-class UIText():
-    def __init__(self, e_id, value= '', text= '{}', position= (0,0), active= True, colour= UI_FONT_COLOUR, font= CHARACTER_FONT, font_size= UI_FONT_SIZE, background= False, bg_colour= (0,0,0), antialias= False):
+    def update(self):
+        return self.draw()
+       
+class UINametag():
+    def __init__(self, e_id, text= 'UNNAMED', position= (0,0), active= True, colour= UI_FONT_COLOUR, font= CHARACTER_FONT, font_size= UI_FONT_SIZE, background= False, bg_colour= (0,0,0), antialias= True):
         self.font = pygame.font.SysFont(font, font_size)
         
+        self.type = 'nametag'
+        self.id = e_id
+        self.label = text
+        self.position = position
+        self.antialias = antialias
+        self.colour = colour
+        self.active = active
+        
+        #Work In Progress
+        self.bg_colour = bg_colour
+        self.background = background
+        
+        self.surface = self.font.render(self.label, self.antialias, self.colour)
+        self.width = self.surface.get_width()
+        self.height = self.surface.get_height()
+        
+    def update_value(self, new_value):
+        self.position = new_value
+        
+    def update(self):
+        if self.active:
+            self.draw()
+        
+    def draw(self):
+        screen.blit(self.surface, self.position)
+        
+class UIText():
+    def __init__(self, e_id, value= '', text= '{}', position= (0,0), active= True, colour= UI_FONT_COLOUR, font= CHARACTER_FONT, font_size= UI_FONT_SIZE, background= False, bg_colour= (0,0,0), antialias= True):
+        self.font = pygame.font.SysFont(font, font_size)
+        
+        self.type = 'text'
         self.id = e_id
         self.value = value
         self.text = text
@@ -701,123 +935,81 @@ class UIText():
         self.surface = self.font.render(self.label, self.antialias, self.colour)
         screen.blit(self.surface, self.position)
     
+class UIButton():
+    def __init__(self, e_id= 'button', button_action= 'exit', text= "Example Button", position= (0,0), width= 100, height= 100, colour= UI_DEFAULT_BUTTON_COLOUR, pressed_colour= UI_DEFAULT_BUTTON_PRESSED_COLOUR, font= CHARACTER_FONT, text_colour= UI_FONT_COLOUR, border_colour= UI_DEFAULT_BUTTON_PRESSED_COLOUR):
+        self.width = width
+        self.height = height
+        self.rect = pygame.Rect(position,(width,height))
+        self.clicked = False
+        self.id = e_id
+        self.type = 'button'
+        self.font = pygame.font.SysFont(font, self.height//2)
+        self.text = text
+        w, h = self.font.size(self.text)
+        self.text_width = w
+        self.text_colour = text_colour
+        self.border_colour = border_colour
+        
+        self.colour = colour
+        self.pressed_colour = pressed_colour
+        
+        self.button_action = button_action
+        
+    def draw(self):
+            
+        for side in range(4):
+            pygame.draw.rect(screen, self.border_colour, (self.rect.left - side, self.rect.top - side, self.width, self.height), 1)
+        
+        if self.clicked:
+            pygame.draw.rect(screen, self.pressed_colour, self.rect)
+        else:
+            pygame.draw.rect(screen, self.colour, self.rect)
+            
+        self.text_surface = self.font.render(self.text, True, self.text_colour)
+        self.text_rect = self.text_surface.get_rect(center= self.rect.center)
+        screen.blit(self.text_surface, self.text_rect)
+            
+    
+    def update_value(self, new_value):
+        self.text = new_value
+        
+    def get_action(self):
+        action = False
+        
+        pos = pygame.mouse.get_pos()
+        
+        if self.rect.collidepoint(pos):
+            if pygame.mouse.get_pressed()[0] == 1 and self.clicked == False:
+                action = self.button_action
+                self.clicked = True
+                
+        if pygame.mouse.get_pressed()[0] == 0:
+            self.clicked = False
+            
+        return action
+        
+    
+    def update(self):
+        self.draw()
 
 class UIController():
     def __init__(self):
-        global game_mode
+        pygame.font.init()
         self.element_list = {}
+        self.game_mode = 0
         
-        if game_mode == 1: #If we are in single player mode.
-            #Score of player
-            key = 'score'
-            ui_object = UIText(e_id= key,
-                                value= '',
-                                text= 'Score: {}',
-                                position= (0,2),
-                                active= True)
-
-            self.element_list[key] = ui_object
-            
-            #Distance to target of player
-            key = 'distance'
-            ui_object = UIText(e_id= key,
-                                value= '',
-                                text= 'Distance: {}',
-                                position= (0,30),
-                                active= True)
-
-            self.element_list[key] = ui_object
+    def set_screen_ui(self, game_mode= 0):
+        self.element_list = {}
+        self.game_mode = game_mode
         
-        elif game_mode == 2: # If we are in dummy mode.
-            #Name of closest dummy
-            key = 'name'
-            ui_object = UIText(e_id= key,
-                                value= '',
-                                text= 'Name: {}',
-                                position= (0,0),
-                                active= True)
-
-            self.element_list[key] = ui_object
-            
-            #Score of closest dummy
-            key = 'score'
-            ui_object = UIText(e_id= key,
-                                value= '',
-                                text= 'Score: {}',
-                                position= (0,100),
-                                active= True)
-
-            self.element_list[key] = ui_object
-            
-            #Distance to target of closest dummy
-            key = 'distance'
-            ui_object = UIText(e_id= key,
-                                value= '',
-                                text= 'Distance: {}',
-                                position= (0,200),
-                                active= True)
-
-            self.element_list[key] = ui_object
-            
-            key = 'alive'
-            ui_object = UIText(e_id= key,
-                                value= '',
-                                text= 'Alive: {}',
-                                position= (SCREEN_WIDTH - 200,0),
-                                active= True)
-
-            self.element_list[key] = ui_object
-            
-        elif game_mode == 3: # If we are in smarty mode
-            # Name of closest smarty
-            key = 'name'
-            ui_object = UIText(e_id= key,
-                                value= '',
-                                text= 'Name: {}',
-                                position= (0,0),
-                                active= True)
-
-            self.element_list[key] = ui_object
-            
-            #Score of closest smarty
-            key = 'score'
-            ui_object = UIText(e_id= key,
-                                value= '',
-                                text= 'Score: {}',
-                                position= (0,100),
-                                active= True)
-
-            self.element_list[key] = ui_object
-            
-            #Distance to target of closest smarty
-            key = 'distance'
-            ui_object = UIText(e_id= key,
-                                value= '',
-                                text= 'Distance: {}',
-                                position= (0,200),
-                                active= True)
-
-            self.element_list[key] = ui_object
-            
-            #Current generation
-            key = 'generation'
-            ui_object = UIText(e_id= key,
-                                value= '',
-                                text= 'Generation: {}',
-                                position= (SCREEN_WIDTH - 200,0),
-                                active= True)
-
-            self.element_list[key] = ui_object
-            
-            key = 'alive'
-            ui_object = UIText(e_id= key,
-                                value= '',
-                                text= 'Alive: {}',
-                                position= (SCREEN_WIDTH - 200,100),
-                                active= True)
-
-            self.element_list[key] = ui_object
-        
+        if self.game_mode == 1: #If we are in single player mode.
+            self.set_singleplayer_ui()
+        elif self.game_mode == 2: # If we are in dummy mode.
+            self.set_dummy_ui()
+        elif self.game_mode == 3: # If we are in smarty mode
+            self.set_smarty_ui()
+        elif self.game_mode == 4: # If we are in the start menu
+            self.set_start_ui()
         
         #Debug mode - Can be used to show debug on screen
         key = 'debug'
@@ -827,6 +1019,170 @@ class UIController():
                             position= (0, SCREEN_HEIGHT - 50),
                             active= IS_DEBUG)
         
+        self.element_list[key] = ui_object
+    
+    def set_singleplayer_ui(self):
+        #Score of player
+        key = 'score'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Score: {}',
+                            position= (0,2),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        #Distance to target of player
+        key = 'distance'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Distance: {}',
+                            position= (0,30),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        key = 'restart_button'
+        ui_object = UIButton(e_id= key,
+                             button_action= 'restart',
+                             text= 'Restart',
+                             position= (20, SCREEN_HEIGHT - 300),
+                             width= 200,
+                             height= 50)
+        self.element_list[key] = ui_object
+            
+    def set_dummy_ui(self):
+        #Name of closest dummy
+        key = 'name'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Name: {}',
+                            position= (0,0),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        #Score of closest dummy
+        key = 'score'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Score: {}',
+                            position= (0,100),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        #Distance to target of closest dummy
+        key = 'distance'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Distance: {}',
+                            position= (0,200),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        key = 'alive'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Alive: {}',
+                            position= (SCREEN_WIDTH - 200,0),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        key = 'closest_toggle_button'
+        ui_object = UIButton(e_id= key,
+                             button_action= 'only_show_closest_toggle',
+                             text= 'Show / Hide',
+                             position= (20, SCREEN_HEIGHT - 200),
+                             width= 200,
+                             height= 50)
+        self.element_list[key] = ui_object
+        
+        key = 'restart_button'
+        ui_object = UIButton(e_id= key,
+                             button_action= 'restart',
+                             text= 'Restart',
+                             position= (20, SCREEN_HEIGHT - 300),
+                             width= 200,
+                             height= 50)
+        self.element_list[key] = ui_object
+            
+    def set_smarty_ui(self):
+        global world
+        # Name of closest smarty
+        key = 'name'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Name: {}',
+                            position= (0,0),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        #Score of closest smarty
+        key = 'score'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Score: {}',
+                            position= (0,100),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        #Distance to target of closest smarty
+        key = 'distance'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Distance: {}',
+                            position= (0,200),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        #Current generation
+        key = 'generation'
+        ui_object = UIText(e_id= key,
+                            value= world.generation,
+                            text= 'Generation: {}',
+                            position= (SCREEN_WIDTH - 200,0),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        key = 'alive'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Alive: {}',
+                            position= (SCREEN_WIDTH - 200,100),
+                            active= True)
+        self.element_list[key] = ui_object
+    
+    def set_start_ui(self):
+        key = 'title'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'NeuroEvolution Playground',
+                            position= (SCREEN_WIDTH / 2,100),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        key = 'singleplayer_button'
+        ui_object = UIButton(e_id= key,
+                             button_action= 'singleplayer',
+                             text= 'Singleplayer',
+                             position= (100, 100),
+                             width= 400,
+                             height= 100)
+        self.element_list[key] = ui_object
+        
+        key = 'dummy_button'
+        ui_object = UIButton(e_id= key,
+                             button_action= 'dummy',
+                             text= 'Dumb AI',
+                             position= (100, 250),
+                             width= 400,
+                             height= 100)
+        self.element_list[key] = ui_object
+        
+        key = 'smarty_button'
+        ui_object = UIButton(e_id= key,
+                             button_action= 'smarty',
+                             text= 'Smart AI',
+                             position= (100, 400),
+                             width= 400,
+                             height= 100)
         self.element_list[key] = ui_object
         
     def update_labels(self,data):
@@ -846,62 +1202,102 @@ class UIController():
         for key in self.element_list:
             self.element_list[key].update()
                 
-    def update(self,data):
-        self.update_labels(data)
-        self.draw()
+                
+    def update(self):
+        for key in self.element_list:
+            if self.element_list[key].type == 'button':
+                action = self.element_list[key].get_action()
+                if action != False:
+                    return action
+        
+        return False
 
+
+def run_singleplayer():
+    global world
+    world.set_game_mode(1)
+    world.load_world(1)
+    player = world.generate_player(p_id= 1,
+                                   sprite_id= 6,
+                                   p_name= 'Player',
+                                   p_type= 'Player')
+
+    # -- Begin Play
+    run = True
+    action = False
+    print("\n --- Begin Play ---\n")
+    
+    while run:
+
+        # -- Update Game
+        clock.tick(GAME_FRAME_RATE)     
+        button = world.update()
+        button = False
+        
+        if button != False:
+            if button == 'restart':
+                run = False
+                action = 'singleplayer'
+            elif button == 'stop':
+                run = False
+                action = 'menu'
+
+        # - Events
+        for event in pygame.event.get():
+            #quit
+            if event.type == pygame.QUIT:
+                run = False
+                action = 'exit'
+                
+            if player.is_alive:
+                # -- Keyboard Press
+                if event.type == pygame.KEYDOWN:
+                    if any(key == event.key for key in LEFT_KEYS):
+                        player.moving_left = True
+                    if any(key == event.key for key in RIGHT_KEYS):
+                        player.moving_right = True
+                    if any(key == event.key for key in UP_KEYS):
+                        player.jump = True
+                    if event.key == pygame.K_ESCAPE:
+                        run = False
+                        
+                # -- Keyboard Release
+                if event.type == pygame.KEYUP:
+                    if any(key == event.key for key in LEFT_KEYS):
+                        player.moving_left = False
+                    if any(key == event.key for key in RIGHT_KEYS):
+                        player.moving_right = False
+              
+        if player.is_alive:
+            player.update()
+            world.update_ui({'score': player.score,
+                            'distance': player.distance_to_target})
+        else:
+            world.screen_scroll = 0
+            action = 'singleplayer'
+            run = False
+
+        # -- Update World
+        pygame.display.update()
+    
+    return check_action(action)
 
 def run_smarties(genomes, config):
     
-    global screen, gen, game_mode, laser_position, name_list
-    global wall_list, marker_list
-    global item_group, hazard_group, goal_group
-    
-    gen += 1
-    game_mode = 3
+    global world
+    world.set_game_mode(3)
+    world.load_world(0)
     
     networks = []
     smarties = []
     ge = []
-    
-    world_data = []
-    for row in range(ROWS):
-        r = [-1] * COLS
-        world_data.append(r)
-
-    with open(MAP_CSV_FILE_PATH, newline='') as mapfile:
-        reader = csv.reader(mapfile, delimiter=',')
-        for x, row in enumerate(reader):
-            for y, tile in enumerate(row):
-                world_data[x][y] = int(tile)
-
-    world = World()
-    world.process_data(world_data)
-
-    item_list = world.item_list
-    goal_list = world.goal_list
-    hazard_list = world.hazard_list
-    wall_list = world.wall_list
-
-    wall_group = world.wall_group
-    item_group = world.item_group
-    hazard_group = world.hazard_group
-    goal_group = world.goal_group
-
-    player_start_x = world.player_start_position_x
-    player_start_y = world.player_start_position_y
-    goal_position = world.goal_position
-    
-    ui = UIController()
-    ui.update({'generation': gen})
     
     closest_tag = ''
     closest_index = 0
     closest_distance = -1
     closest_score = 0
     
-    laser = Laser()
-    laser_position = 0
+    action = False
     
     for genome_id, genome in genomes:
         genome.fitness = 0
@@ -910,19 +1306,19 @@ def run_smarties(genomes, config):
         networks.append(net)
         
         sprite_id = random.randint(0,DYNAMIC_SPRITE_COUNT-2)
-        name = name_list[random.randint(0, len(name_list) - 1)][0]
-        
-        smarties.append(Player(genome_id, player_start_x, player_start_y, sprite_id, name, 'Smarty', goal_position))
+        smarty = world.generate_player(p_id= genome_id,
+                                           sprite_id= sprite_id,
+                                           p_type= 'Smarty')
+        smarties.append(smarty)
         
         ge.append(genome)
-        
-    fitness = 0
     
+    print("Forced Evolution score:{}".format((world.num_items * ITEM_SCORE) + GOAL_SCORE))
     run = True
     while run and len(smarties) > 0:
         smarties_alive = len(smarties)
         clock.tick(GAME_FRAME_RATE)
-        draw_bg()
+        world.update()
         
         closest_index = -1
         closest_distance = -1
@@ -939,11 +1335,10 @@ def run_smarties(genomes, config):
         
         #Generate Inputs to character
         for n, smarty in enumerate(smarties):
-            ge[n].fitness += FRAME_FITNESS
-            
-            smarty_distance = smarty.get_distance_to_target()
-            #To move: send distance to goal, if on ground, and if is moving
-            output = networks[smarties.index(smarty)].activate((smarty_distance, smarty.get_is_on_ground(), smarty.get_is_moving()))
+
+            smarty_distance = smarty.distance_to_target
+            #To move: send distance to goal, if on ground, if it's moving and it's distance travelled
+            output = networks[smarties.index(smarty)].activate((smarty.get_is_on_ground(), smarty.distance_travelled, smarty.scan_top, smarty.scan_mid, smarty.scan_bot))
             
             #Activate movements based on NN outputs
             if output[0] > MOVE_BIAS:
@@ -971,17 +1366,20 @@ def run_smarties(genomes, config):
                 if smarty.player_tag == closest_tag:
                     smarty.followed = True
                     closest_tag = smarty.player_tag
-                    closest_distance = smarty.get_distance_to_target()
+                    closest_distance = smarty.distance_to_target
                     closest_index = smarties.index(smarty)
                     closest_score = smarty.score
-                    total_scroll = smarty.total_scroll
+                    world.total_scroll = smarty.total_scroll
                 else:
                     smarty.followed = False
                 
                 collide = smarty.update()
 
-                if smarty.get_distance_to_target() < smarty.prev_distance_to_target:
-                    genome[n].fitness += PROGRESS_FITNESS
+                if SHOW_MAKING_PROGRESS:
+                    smarty.log("[a: {a}] < [b: {b}] = [{c}]".format(a= smarty.distance_to_target, b= smarty.prev_distance_to_target, c= smarty.distance_to_target < smarty.prev_distance_to_target))
+                
+                if smarty.get_progress:
+                    ge[n].fitness += PROGRESS_FITNESS
 
                 if collide == False or collide == 0: #If smarty is dead, or dies
                     list_index = smarties.index(smarty)
@@ -989,249 +1387,250 @@ def run_smarties(genomes, config):
                     networks.pop(list_index)
                     ge.pop(list_index)
                     smarties.pop(list_index)
-                elif collide == 1: #If smarty hits an item
-                    ge[n].fitness += ITEM_FITNESS
-                elif collide == 2: #If smarty hits the goal
-                    ge[n].fitness += GOAL_FITNESS
-                
-        #Update everything else
-        # -- Update Items
-        for item in item_list:
-            item.update_animation()
-            item.draw()
-
-        # -- Update Goals
-        for goal in goal_list:
-            goal.update_animation()
-            goal.draw()
-
-        # -- Update Hazards
-        for hazard in hazard_list:
-            hazard.draw()
-
-        # -- Update Markers
-        for marker in marker_list:
-            marker.draw()
-            
-        laser_position = laser.update()
-            
-        world.draw()
+                else:
+                    if collide == 1: #If smarty hits an item
+                        ge[n].fitness += ITEM_FITNESS
+                    elif collide == 2: #If smarty hits the goal
+                        ge[n].fitness += GOAL_FITNESS
+                    
+                    smarty.fitness = ge[n].fitness
+                    
         
         if SHOW_UI_DEBUG:
             print("name: {n} | index: {i} | distance: {d} | screen scroll: {ss}".format(n= closest_tag,
                                                                   i= closest_index,
                                                                   d= closest_distance,
-                                                                  ss= screen_scroll))
+                                                                  ss= world.screen_scroll))
             
-        ui.update({'name': closest_tag,
-                    'score': closest_score,
-                    'distance': closest_distance,
-                    'alive': len(smarties)})
+        world.update_ui({'name': closest_tag,
+                                'score': closest_score,
+                                'distance': closest_distance,
+                                'alive': smarties_alive})
 
-        pygame.display.update()  
+        pygame.display.update()
+        
+    return check_action(action) 
             
-        
-    
-        
-# --- At Run ---
-name_list = get_names()
+def run_dummies(population= DUMMY_POPULATION, batches= DUMMY_BATCHES):
+    global world
+    world.set_game_mode(2)
+    world.load_world(0)
 
-if GENERATE_SMARTIES:
-    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, CONFIG_FILE_PATH)
-    
-    gen = 0
-    
-    population = neat.Population(config)
-    
-    population.add_reporter(neat.StdOutReporter(True))
-    stats = neat.StatisticsReporter()
-    population.add_reporter(stats)
-    
-    fittest = population.run(run_smarties, GENERATIONS)
-    
-    print("\n== Only the strongest shall survive... ==\n{!s}".format(fittest))
-    
-else:
-    world_data = []
-    for row in range(ROWS):
-        r = [-1] * COLS
-        world_data.append(r)
 
-    with open(MAP_CSV_FILE_PATH, newline='') as mapfile:
-        reader = csv.reader(mapfile, delimiter=',')
-        for x, row in enumerate(reader):
-            for y, tile in enumerate(row):
-                world_data[x][y] = int(tile)
+    print("--- [Generating {bat} batches of {pop} Dummies] ---".format(pop= population, bat= batches))
+    dummies = []
 
-    world = World()
-    world.process_data(world_data)
+    for b_id in range(batches):
+        #Set Batch Sprite
+        sprite_id = random.randint(0,DYNAMIC_SPRITE_COUNT-2)
+        print("-- [Generating Batch {bid} - Sprite_id: {sid}] --".format(sid= sprite_id, bid= b_id))
+        for n in range(population):
+            
+            d_id = len(dummies)
+            print("-- [Generating Dummy - DID: {did}] --".format(did= d_id, bid= b_id))
 
-    item_list = world.item_list
-    goal_list = world.goal_list
-    hazard_list = world.hazard_list
-    wall_list = world.wall_list
+            dummy = world.generate_player(p_id= d_id,
+                                           sprite_id= sprite_id,
+                                           p_type= 'Dummy')
+            dummy.moving_right = True
+            dummies.append(dummy)
+            dummy.log(" -- Generated Successfully! --\n")
 
-    wall_group = world.wall_group
-    item_group = world.item_group
-    hazard_group = world.hazard_group
-    goal_group = world.goal_group
-
-    player_start_x = world.player_start_position_x
-    player_start_y = world.player_start_position_y
-    player_active = False
-    player = Optional[Player]
-
-    dummy_list = []
-    dead_dummy_count = 0
-
-    strongest_dummy = Optional[Player]
-    goal_position = world.goal_position
-    new_index = 0
-    closest_index = -1
-
-    marker_list = []
-    name_list = get_names()
-    spawn_offset = 0
-    interval = 0
-    
-    closest_distance = -1
-    closest_tag = ''
-
-    # -- Generate 'Players'
-    if GENERATE_PLAYER:
-        player = generate_player(goal_position)
-        player_active = True
-        game_mode = 1
-
-    # -- Generate 'Dummies' [TEMPORARY UNTIL AI CODED]
-    if GENERATE_DUMMIES:
-        generate_dummies_bulk(spawn_offset,goal_position)
-        game_mode = 2
+    print("--- [{}/{} Dummies Successfully Generated] ---\n".format(len(dummies), (population * batches)))
 
     # -- Begin Play
-    run = True
-    
-    ui = UIController()
-    
     print("\n --- Begin Play ---\n")
+    closest_distance = -1
+    closest_tag = ''
+    closest_index = -1
+    closest_score = -1
+    action = False
 
+    run = True
     while run:
-
+        
         # -- Update Game
-        clock.tick(GAME_FRAME_RATE)
-        draw_bg()       
-
-        # -- Update Items
-        for item in item_list:
-            item.update_animation()
-            item.draw()
-
-        # -- Update Goals
-        for goal in goal_list:
-            goal.update_animation()
-            goal.draw()
-
-        # -- Update Hazards
-        for hazard in hazard_list:
-            hazard.draw()
-
-        # -- Update Markers
-        for marker in marker_list:
-            marker.draw()
-
-        # -- Update Players
+        clock.tick(GAME_FRAME_RATE)     
+        button = world.update()
+        
+        if button != False:
+            if button == 'only_show_closest_toggle':
+                world.only_show_closest_player = False if world.only_show_closest_player else True
+            if button == 'restart':
+                run = False
+                action = 'dummy'
+            if button == 'stop':
+                run = False
+                action = 'menu'
+            
         # - Events
         for event in pygame.event.get():
             #quit
             if event.type == pygame.QUIT:
                 run = False
-            if game_mode == 1:
-                if player.is_alive:
-                    # -- Keyboard Press
-                    if event.type == pygame.KEYDOWN:
-                        if any(key == event.key for key in LEFT_KEYS):
-                            player.moving_left = True
-                        if any(key == event.key for key in RIGHT_KEYS):
-                            player.moving_right = True
-                        if any(key == event.key for key in UP_KEYS):
-                            player.jump = True
-                        if event.key == pygame.K_ESCAPE:
-                            run = False
-                    # -- Keyboard Release
-                    if event.type == pygame.KEYUP:
-                        if any(key == event.key for key in LEFT_KEYS):
-                            player.moving_left = False
-                        if any(key == event.key for key in RIGHT_KEYS):
-                            player.moving_right = False
-
-        if game_mode == 1:       
-            if player.is_alive:
-                player.update()
-                ui.update({'score': player.score,
-                           'distance': player.get_distance_to_target()})
-            else:
-                screen_scroll = 0
-                player_active = False
-
-        # -- Update Dummies
-        if GENERATE_DUMMIES:
-            dummy_count = 0
-
-            for index, dummy in enumerate(dummy_list):
+                action = 'exit'
                 
-                distance = dummy.get_distance_to_target()
-                if closest_distance == -1 or distance < closest_distance:
+        
+        #Generate Inputs to dummy
+        for n, dummy in enumerate(dummies):
+            
+            dummy_distance = dummy.distance_to_target
+            
+            #To Jump
+            output = random.randint(0,DUMMY_JUMP_DEVIATION)
+            
+            #Activate movements based on Rand output
+            if output > DUMMY_JUMP_BIAS:
+                dummy.jump = True
+                
+            #If it's the closest so far, store it's details
+            if closest_distance == -1 or dummy_distance < closest_distance:
+                closest_tag = dummy.player_tag
+                closest_distance = dummy_distance     
+
+        alive_dummies = 0
+        
+        #Process inputs to character
+        for n, dummy in enumerate(dummies):
+            if dummy.is_alive:
+                if dummy.player_tag == closest_tag:
+                    dummy.followed = True
                     closest_tag = dummy.player_tag
-                    closest_distance = distance
-                    closest_index = dummy_list.index(dummy)
+                    closest_distance = dummy.distance_to_target
+                    closest_index = dummies.index(dummy)
+                    closest_score = dummy.score
+                    world.total_scroll = dummy.total_scroll
+                else:
+                    dummy.followed = False
 
-                if dummy.is_alive:
-                    if dummy.is_in_air:
-                        dummy.jump = False
-                    else:
-                        do_jump = random.randint(0,10)
-                        jump_tolerance = 10
-                        dummy.jump = do_jump >= jump_tolerance
+                alive_dummies += 1
+                
+                collide = dummy.update()
 
-                    dummy.update()
-                    dummy_count += 1
-
-            # - Set new closest Dummy
-            for dummy in dummy_list:
-                if dummy.is_alive:
-                    if dummy.player_tag == closest_tag:
-                        dummy.followed = True
-                    else:
-                        dummy.followed = False
-            
-            
-            ui.update({'name': dummy_list[closest_index].player_tag,
-                       'score': dummy_list[closest_index].score,
-                       'distance': dummy_list[closest_index].get_distance_to_target(),
-                       'alive': dummy_count})
-
-            # - Respawn Dummies when they're all dead [Deactivated temporarily]
-            if dummy_count <= 0:
-                #generate_dummies_bulk(spawn_offset,goal_position)
-                strongest_dummy.log("is the current strongest dummy at {}!",{strongest_dummy.score})
-                print("=== Strongest Dummy was: {} ===".format(strongest_dummy.player_tag))
-                screen_scroll = 0
-                run = False
-
-            #FOR DEBUG
-            if interval > 20:
-                print("Currently following          {}".format(closest_tag))
-                print("Their [distance] is         {}".format(dummy_list[closest_index].followed))
-                print("The [screen_scroll] is       {}".format(screen_scroll))
-                interval = 0
-            else:
-                interval += 1
-
+                #Might not be needed?
+                """ if collide == False or collide == 0: #If smarty is dead, or dies
+                    list_index = smarties.index(smarty)
+                    ge[list_index].fitness -= 1
+                    networks.pop(list_index)
+                    ge.pop(list_index)
+                    smarties.pop(list_index)"""
+        
+        
+        world.update_ui({'name': dummies[closest_index].player_tag,
+                   'score': dummies[closest_index].score,
+                   'distance': dummies[closest_index].distance_to_target,
+                   'alive': alive_dummies})
+        
+        # - Respawn Dummies when they're all dead [Deactivated temporarily]
 
         # -- Update World
-        world.draw()
+        pygame.display.update() 
+        
+    return check_action(action)
+    
+def run_menu():
+    clock = pygame.time.Clock()
+    run = True
+    next_screen = -1
+    ui = UIController()
+    ui.set_screen_ui(4)
+    
+    
+    while run: 
+        clock.tick(GAME_FRAME_RATE)
+        
+        screen.fill(MENU_BACKGROUND_COLOUR)
+        
+        action = ui.update()
         ui.draw()
+        
+        if action != False:
+            print(action)
+            if action == 'exit':
+                next_screen = -1
+                run = False
+            elif action == 'singleplayer':
+                next_screen = 1
+                run = False
+            elif action == 'dummy':
+                next_screen = 2
+                run = False
+            elif action == 'smarty':
+                next_screen = 3
+                run = False
 
-        pygame.display.update()        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                next_screen = -1
+                run = False
+            
+        pygame.display.update()
+        
+    return next_screen
+        
+def check_action(action):
+    if action == False:
+        return 0
+    else:
+        print(action)
+        if action == 'exit':
+            return -1
+            
+        elif action == 'singleplayer':
+            return 1
+            
+        elif action == 'dummy':
+            return 2
+            
+        elif action == 'smarty':
+            return 3
+        
+        elif action == 'menu':
+            return 0
+                
+        
+# --- At Run ---
+world = World(0)
+world.load_name_list()
+current_screen = 0
+
+run = True
+while run:
+    print(global_counter)
+    if current_screen == 0:
+        #Main Menu
+        current_screen = run_menu()
+    
+    elif current_screen == 1:
+        #Singleplayer
+        current_screen = run_singleplayer()
+    
+    elif current_screen == 2:
+        #Dumb Ai
+        current_screen = run_dummies()
+    
+    elif current_screen == 3:
+        #Smart AI
+        config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, CONFIG_FILE_PATH)
+
+        population = neat.Population(config)
+
+        population.add_reporter(neat.StdOutReporter(True))
+        stats = neat.StatisticsReporter()
+        population.add_reporter(stats)
+
+        fittest = population.run(run_smarties, GENERATIONS)
+
+        print("\n== Only the strongest shall survive... ==\n{!s}".format(fittest))
+        
+    elif current_screen == -1:
+        #Quit signal
+        run = False
+    else:
+        print("UNKNOWN SCREEN: {}".format(current_screen))
+    
+    global_counter += 1
 
 pygame.quit()
+    
+    

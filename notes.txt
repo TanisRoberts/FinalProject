@@ -15,3 +15,23 @@ background research before the methodology
 Highlight the AI section, include a research
 Put what is a neural network in background research
 Flesh out game and add multiple levels for singleplayer, plus start and level complete screens
+Going from javascript to python, then arcade to pygame
+javascript game would have included having the ai watch the screen, whereas python lets it be a part of the game.
+python arcade is good for physics stuff, but it quickly gets out of time with the neural network
+pygame lets me keep time manually 
+
+make a graph from the fitness of the generations
+a successful neural network AI would show a positive correlation between generations and average fitness
+may be linear, exponential or diminishing
+
+give the game to 10 players, get them to play the levels 10 times and get their time from each attempt
+graph the average of attempt 1, attempt 2 etc and compare to smart ai times
+maybe even compare to dummies
+
+if you can't find anything on neural networks applications in games, just say that you couldnt 
+
+https://ieeexplore-ieee-org.ezproxy.brighton.ac.uk/document/488238
+
+moved all interactibles into one group instead of mutliple to improve performance
+
+added 'view' of the smart ai so it can detect things infront of it

@@ -63,7 +63,7 @@ MAP_TILES_FILE_PATH = "assets/tilemap/tiles/py_test_tiles/{}.png"
 MAP_CSV_PATH = "assets/tilemap/csv/{}.csv"
 MAP_CSV_FILE_LIST = {
     0: "py_test",
-    1: "py_test",
+    1: "level_1",
     2: "level_2"
 }
 
@@ -203,18 +203,19 @@ GENERATE_SMARTIES = True
 CONFIG_FILE_PATH = 'res/NEAT_config.txt'
 GENERATIONS = None #Number of generations to run. 'None' allows infinite generations 
 FRAME_FITNESS = 0.1
-PROGRESS_FITNESS = 1
+PROGRESS_FITNESS = 0.1
 ITEM_FITNESS = 50
 GOAL_FITNESS = 500
+LASER_PENALTY = 25
 MOVE_BIAS = 0.5
 JUMP_BIAS = 0.9
 
-SCAN_DOT_RADIUS = 5
-SCAN_DOT_THICKNESS = 2
+SCAN_DOT_RADIUS = 4
+SCAN_DOT_THICKNESS = 1
 
 LASER_MOVE_SPEED = 3
 LASER_COLOUR = (255,0,0)
-LASER_WIDTH = 1
+LASER_WIDTH = 4
 
 WIN_SCORE = (ITEM_SCORE * NUM_ITEMS) + (GOAL_SCORE * NUM_GOALS)
 

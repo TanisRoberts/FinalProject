@@ -2,6 +2,8 @@ import pygame
 import math
 from typing import Optional
 
+SETTINGS_CSV_PATH = "res/settings.csv"
+SETTINGS = {}
 #[Debug Settings]
 
 """
@@ -11,7 +13,8 @@ Setting this to false will disable all other debug settings.
 """
 IS_DEBUG = True
 
-SHOW_COLLISION_BOXES = True if IS_DEBUG else False
+
+SHOW_COLLISION_BOXES = False if IS_DEBUG else False
 COLLISION_BOX_COLOUR = (235,116,52)
 
 HIGHLIGHT_CLOSEST_PLAYER = False if IS_DEBUG else False
@@ -201,11 +204,13 @@ DUMMY_JUMP_DEVIATION = 100
 # -- Smarties --
 GENERATE_SMARTIES = True
 CONFIG_FILE_PATH = 'res/NEAT_config.txt'
-GENERATIONS = None #Number of generations to run. 'None' allows infinite generations 
+LONG_CONFIG_FILE_PATH = 'res/NEAT_config_long.txt'
+GENERATIONS = 10 #Number of generations to run. 'None' allows infinite generations 
 FRAME_FITNESS = 0.1
-PROGRESS_FITNESS = 0.1
+PROGRESS_FITNESS = 0.4
+STUCK_PENALTY = 0.2
 ITEM_FITNESS = 50
-GOAL_FITNESS = 500
+GOAL_FITNESS = 10000
 LASER_PENALTY = 25
 MOVE_BIAS = 0.5
 JUMP_BIAS = 0.9
@@ -213,7 +218,7 @@ JUMP_BIAS = 0.9
 SCAN_DOT_RADIUS = 4
 SCAN_DOT_THICKNESS = 1
 
-LASER_MOVE_SPEED = 3
+LASER_MOVE_SPEED = 4
 LASER_COLOUR = (255,0,0)
 LASER_WIDTH = 4
 

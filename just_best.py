@@ -7,6 +7,9 @@ import numpy
 import math
 import neat
 import pickle
+import time
+from os import walk
+from concurrent.futures import ThreadPoolExecutor
 from res.constants_py import *
 
 pygame.init()
@@ -17,6 +20,7 @@ pygame.display.set_caption(SCREEN_TITLE)
 clock = pygame.time.Clock()
 
 global_counter = 0
+start_time = time.time()
 
 pygame.display.update()
 
@@ -25,8 +29,13 @@ pygame.display.update()
 # - 2 : Dummies
 # - 3 : Smarties
 
+def get_run_time():
+    result = time.time() - start_time
+    return result
+
 class World():
     def __init__(self, game_mode= 0):
+        global global_counter
         self.level = 0
         self.world_data = []
         self.map_file_path = ""
@@ -37,7 +46,7 @@ class World():
         self.player_start_position_x = PLAYER_START_POS_X
         self.player_start_position_y = PLAYER_START_POS_Y
         self.goal_position = 0
-        self.generation = SETTINGS['generation']
+        self.generation = global_counter
         
         self.ui = Optional[UIController]
         self.game_mode = 0
@@ -108,6 +117,7 @@ class World():
         self.marker_list.append(marker)
         
     def set_game_mode(self,game_mode):
+        global global_counter
         self.game_mode = game_mode
         self.ui = Optional[UIController]
         self.world_list = []
@@ -127,9 +137,7 @@ class World():
         self.laser = Laser()
         self.laser_position = 0
         
-        if game_mode == 3:
-            SETTINGS['generation'] += 1
-            self.generation = SETTINGS['generation']
+        self.generation = global_counter
         
     def load_tiles(self):    
         for x in range(TILE_TYPES):
@@ -226,8 +234,7 @@ class World():
                     
     
     def update_laser(self):
-        if self.game_mode == 3: # Only if in smarty mode
-            self.laser_position = self.laser.update()
+        self.laser_position = self.laser.update()
     
     def update_ui(self,data):
         self.ui.update_labels(data)
@@ -243,20 +250,23 @@ class World():
             if (0 - TILE_SIZE) < tile[1][0] < (SCREEN_WIDTH + TILE_SIZE) and (0 - TILE_SIZE) < tile[1][1] < (SCREEN_HEIGHT):
                 screen.blit(tile[0], tile[1])
                 
-        pygame.draw.line(screen, (255,0,0), (self.left_boundary,0), (self.left_boundary,SCREEN_HEIGHT), 1)    
-        pygame.draw.line(screen, (0,0,255), (self.right_boundary,0), (self.right_boundary,SCREEN_HEIGHT), 1)    
     
     def update(self):
         self.draw_world()
         self.object_group.update()
         self.update_markers()
-        self.update_laser()
+        if self.game_mode == 3 or self.game_mode == 5:
+            self.update_laser()
+            
         self.ui.draw()
         return self.ui.update()
+    
+    def update_hidden(self):
+        self.laser_position = self.laser.update_hidden()
 
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, p_id, x = PLAYER_START_POS_X, y = PLAYER_START_POS_Y, sprite_id = 0, p_name = "", p_type = 'Player', goal_position = 0):
+    def __init__(self, p_id, x = PLAYER_START_POS_X, y = PLAYER_START_POS_Y, sprite_id = 0, p_name = "", p_type = 'Player', goal_position = 0, hidden = False):
         super().__init__()
         
         # -- General
@@ -269,6 +279,7 @@ class Player(pygame.sprite.Sprite):
         self.collected_item_list = []
         self.collected_goal = False
         self.distance_travelled = 0
+        self.prev_distance_travelled = 0
         
         self.goal_position = goal_position
         self.distance_to_target = 0
@@ -385,6 +396,10 @@ class Player(pygame.sprite.Sprite):
         self.const_x = x
         self.relative_scroll = 0
         
+        self.hidden = hidden
+        self.output_j = 0
+        self.output_w = 0
+        
     def update_animation(self):
         if self.is_in_air:
             if self.vel_y < -PLAYER_PARABOLIC_STILL:
@@ -443,65 +458,62 @@ class Player(pygame.sprite.Sprite):
             self.scan_ground = False
             
             for obj in world.wall_list:
-                if obj[1].collidepoint((self.scan_x_f, self.scan_y - TILE_SIZE)):
-                    self.scan_top_f = 1
-                    
-                if obj[1].collidepoint((self.scan_x_f, self.scan_y)):
-                    self.scan_mid_f = 1
-                    
-                if obj[1].collidepoint((self.scan_x_f, self.scan_y + TILE_SIZE)):
-                    self.scan_bot_f = 1
-                    
-                #REAR VIEW
-                if obj[1].collidepoint((self.scan_x_r, self.scan_y - TILE_SIZE)):
-                    self.scan_top_r = 1
-                    
-                if obj[1].collidepoint((self.scan_x_r, self.scan_y)):
-                    self.scan_mid_r = 1
-                    
-                if obj[1].collidepoint((self.scan_x_r, self.scan_y + TILE_SIZE)):
-                    self.scan_bot_r = 1
-                    
-                if obj[1].colliderect(self.scan_ground_rect):
-                    self.scan_ground = True
+                if self.rect.x + 100 > obj[1].x > self.rect.x - 100:
+                    if obj[1].collidepoint((self.scan_x_f, self.scan_y - TILE_SIZE)):
+                        self.scan_top_f = 1
+
+                    if obj[1].collidepoint((self.scan_x_f, self.scan_y)):
+                        self.scan_mid_f = 1
+
+                    if obj[1].collidepoint((self.scan_x_f, self.scan_y + TILE_SIZE)):
+                        self.scan_bot_f = 1
+
+                    #REAR VIEW
+                    if obj[1].collidepoint((self.scan_x_r, self.scan_y)):
+                        self.scan_mid_r = 1
+
+                    if obj[1].colliderect(self.scan_ground_rect):
+                        self.scan_ground = True
                 
             for obj in world.object_group.sprites():
                 #check if top dot is active, and set scan_top to object_type
-                if obj.rect.collidepoint((self.scan_x_f, self.scan_y - TILE_SIZE)):
-                    if obj.type == 'hazard':
-                        self.scan_top_f = -1
-                    elif obj.type == 'item' and not any(item_id == obj.object_id for item_id in self.collected_item_list):
-                        self.scan_top_f = 2
-                    elif obj.type == 'goal':
-                        self.scan_top_f = 3
-                        
-                #check if middle dot is active, and set scan_mid to object_type
-                if obj.rect.collidepoint((self.scan_x_f, self.scan_y)):
-                    if obj.type == 'hazard':
-                        self.scan_mid_f = -1
-                    elif obj.type == 'item' and not any(item_id == obj.object_id for item_id in self.collected_item_list):
-                        self.scan_mid_f = 2
-                    elif obj.type == 'goal':
-                        self.scan_mid_f = 3
-            
-                #check if bottom dot is active, and set scan_bot to object_type
-                if obj.rect.collidepoint((self.scan_x_f, self.scan_y + TILE_SIZE)):
-                    if obj.type == 'hazard':
-                        self.scan_bot_f = -1
-                    elif obj.type == 'item' and not any(item_id == obj.object_id for item_id in self.collected_item_list):
-                        self.scan_bot_f = 2
-                    elif obj.type == 'goal':
-                        self.scan_bot_f = 3
-                        
-                        
-                #check if rear dot is active, and set scan_mid_r to object_type
-                if obj.rect.collidepoint((self.scan_x_r, self.scan_y)):
-                    if obj.type == 'hazard':
-                        self.scan_mid_r = -1
-                    elif obj.type == 'item' and not any(item_id == obj.object_id for item_id in self.collected_item_list):
-                        self.scan_mid_r = 2
-                    elif obj.type == 'goal':
-                        self.scan_mid_r = 3
+                if self.rect.x + 100 > obj.rect.x > self.rect.x - 100:
+                    if obj.rect.collidepoint((self.scan_x_f, self.scan_y - TILE_SIZE)):
+                        if obj.type == 'hazard':
+                            self.scan_top_f = -1
+                        elif obj.type == 'item' and not any(item_id == obj.object_id for item_id in self.collected_item_list):
+                            self.scan_top_f = 2
+                        elif obj.type == 'goal':
+                            self.scan_top_f = 3
+
+                    #check if middle dot is active, and set scan_mid to object_type
+                    if obj.rect.collidepoint((self.scan_x_f, self.scan_y)):
+                        if obj.type == 'hazard':
+                            self.scan_mid_f = -1
+                        elif obj.type == 'item' and not any(item_id == obj.object_id for item_id in self.collected_item_list):
+                            pass
+                            #self.scan_mid_f = 2
+                        elif obj.type == 'goal':
+                            self.scan_mid_f = 3
+
+                    #check if bottom dot is active, and set scan_bot to object_type
+                    if obj.rect.collidepoint((self.scan_x_f, self.scan_y + TILE_SIZE)):
+                        if obj.type == 'hazard':
+                            self.scan_bot_f = -1
+                        elif obj.type == 'item' and not any(item_id == obj.object_id for item_id in self.collected_item_list):
+                            self.scan_bot_f = 2
+                        elif obj.type == 'goal':
+                            self.scan_bot_f = 3
+
+
+                    #check if rear dot is active, and set scan_mid_r to object_type
+                    if obj.rect.collidepoint((self.scan_x_r, self.scan_y)):
+                        if obj.type == 'hazard':
+                            self.scan_mid_r = -1
+                        elif obj.type == 'item' and not any(item_id == obj.object_id for item_id in self.collected_item_list):
+                            self.scan_mid_r = 2
+                        elif obj.type == 'goal':
+                            self.scan_mid_r = 3
             
             
         else:
@@ -564,16 +576,16 @@ class Player(pygame.sprite.Sprite):
             
         #ground dot
         if self.scan_ground: # did not scan the ground
-            pygame.draw.rect(screen, (255,255,255), self.scan_ground_rect, width= 1)
-        else: # scanned the ground
             pygame.draw.rect(screen, (255,255,255), self.scan_ground_rect)
+        else: # scanned the ground
+            pygame.draw.rect(screen, (255,255,255), self.scan_ground_rect, width= 1)
           
     def move(self):
         if self.is_alive:
             global world
             dx = 0
             dy = 0
-            self.prev_distance_to_target = self.distance_to_target
+            self.prev_distance = self.distance_travelled
 
             if self.moving_left:
                 dx = -self.speed
@@ -604,53 +616,65 @@ class Player(pygame.sprite.Sprite):
                 self.is_in_air = True
                 
             for tile in world.wall_list:
-                if tile[1].colliderect(self.hit_rect.x + dx, self.hit_rect.y, self.width // 2, self.height):
-                    dx = 0
+                if self.rect.x + 100 > tile[1].x > self.rect.x - 100:
+                    if tile[1].colliderect(self.hit_rect.x + dx, self.hit_rect.y, self.width // 2, self.height):
+                        dx = 0
 
-                if tile[1].colliderect(self.hit_rect.x, self.hit_rect.y + dy, self.width // 2, self.height):
-                    if self.vel_y < 0:
-                        self.vel_y = 0
-                        dy = tile[1].bottom - self.rect.top
+                    if tile[1].colliderect(self.hit_rect.x, self.hit_rect.y + dy, self.width // 2, self.height):
+                        if self.vel_y < 0:
+                            self.vel_y = 0
+                            dy = tile[1].bottom - self.rect.top
 
-                    elif self.vel_y >= 0:
-                        self.vel_y = 0
-                        dy = tile[1].top - self.rect.bottom
-                        #self.is_in_air = False
+                        elif self.vel_y >= 0:
+                            self.vel_y = 0
+                            dy = tile[1].top - self.rect.bottom
+                            #self.is_in_air = False
             
+            if not self.is_in_air:
+                self.distance_travelled += abs(dx)
+            
+            if not self.hidden:
+                self.const_x += dx
+                self.rect.y += dy
+                #self.distance_travelled += abs(dx)
 
-            self.const_x += dx
-            self.rect.y += dy
-            self.distance_travelled += abs(dx)
+                if 0 < self.rect.x < world.right_boundary:
+                    if self.relative_scroll - dx >= 0:
+                        self.relative_scroll = 0
+                    else:
+                        if not dx >= 0:
+                            self.relative_scroll -= dx
+                elif world.left_boundary < self.rect.x < SCREEN_WIDTH:
+                    if self.relative_scroll - dx <= -world.scroll_cap:
+                        self.relative_scroll = -world.scroll_cap
+                    elif self.relative_scroll - dx >= 0:
+                        self.relative_scroll = 0
+                    else:
+                        if not dx <= 0:
+                            self.relative_scroll -= dx
 
-            if 0 < self.rect.x < world.right_boundary:
-                if self.relative_scroll - dx >= 0:
-                    self.relative_scroll = 0
-                else:
-                    if not dx >= 0:
-                        self.relative_scroll -= dx
-            elif world.left_boundary < self.rect.x < SCREEN_WIDTH:
-                if self.relative_scroll - dx <= -world.scroll_cap:
-                    self.relative_scroll = -world.scroll_cap
-                elif self.relative_scroll - dx >= 0:
-                    self.relative_scroll = 0
-                else:
-                    if not dx <= 0:
-                        self.relative_scroll -= dx
+                if self.followed:
+                    if self.relative_scroll < world.relative_scroll: 
+                        world.relative_scroll = self.relative_scroll
+
+                self.rect.x = self.const_x + world.relative_scroll
+
+                self.hit_rect.center = self.rect.center
+
+                self.distance_to_target = abs(world.goal_position - self.rect.x)
+
+                self.scan_ground_rect = (self.rect.left + (self.rect.width // 4), self.rect.bottom + self.scan_ground_tolerance, self.rect.width // 2, 4)
+
+                self.name_tag.update_value(self.get_name_tag_pos())
             
-            if self.followed:
-                if self.relative_scroll < world.relative_scroll: 
-                    world.relative_scroll = self.relative_scroll
-            
-            self.rect.x = self.const_x + world.relative_scroll
-                
-            self.hit_rect.center = self.rect.center
-                
-            self.distance_to_target = abs(world.goal_position - self.rect.x)
-            
-            self.scan_ground_rect = (self.rect.left + (self.rect.width // 4), self.rect.bottom + self.scan_ground_tolerance, self.rect.width // 2, 4)
-                
-            self.name_tag.update_value(self.get_name_tag_pos())
-                     
+            else:
+                self.const_x += dx
+                self.rect.y += dy
+                self.rect.x = self.const_x
+                self.hit_rect.center = self.rect.center
+                self.distance_to_target = abs(world.goal_position - self.rect.x)
+                self.scan_ground_rect = (self.rect.left + (self.rect.width // 4), self.rect.bottom + self.scan_ground_tolerance, self.rect.width // 2, 4)
+
     def die(self, msg):
         global world
         self.is_alive = False
@@ -697,8 +721,7 @@ class Player(pygame.sprite.Sprite):
             
     def get_progress(self):
         if self.is_alive:
-            global world
-            if self.distance_to_target > self.prev_distance_to_target:
+            if self.distance_travelled > self.prev_distance:
                 return True
             else:
                 return False
@@ -732,8 +755,6 @@ class Player(pygame.sprite.Sprite):
 
             self.name_tag.update()
             
-            if self.followed:
-                self.draw_scan_dots()
  
     def update(self):
         self.move()
@@ -741,6 +762,12 @@ class Player(pygame.sprite.Sprite):
         collide = self.check_collisions()
         self.scan()
         self.draw()
+        return collide
+    
+    def update_hidden(self):
+        self.move()
+        collide = self.check_collisions()
+        self.scan()
         return collide
         
         
@@ -802,7 +829,7 @@ class Item(pygame.sprite.Sprite):
     def update(self):
         self.update_animation()
         self.draw()
-        
+              
     
 class Goal(pygame.sprite.Sprite):
     def __init__(self, g_id, x = 0, y = 0):
@@ -946,7 +973,12 @@ class Laser():
         
     def update(self):
         return self.draw()
-       
+    
+    def update_hidden(self):
+        self.x_pos += self.speed
+        return self.x_pos
+ 
+
 class UINametag():
     def __init__(self, e_id, text= 'UNNAMED', position= (0,0), active= True, colour= UI_FONT_COLOUR, font= CHARACTER_FONT, font_size= UI_FONT_SIZE, background= False, bg_colour= (0,0,0), antialias= True):
         self.font = pygame.font.SysFont(font, font_size)
@@ -1086,6 +1118,8 @@ class UIController():
             self.set_smarty_ui()
         elif self.game_mode == 4: # If we are in the start menu
             self.set_start_ui()
+        elif self.game_mode == 5: # If we are in the start menu
+            self.set_smarty_background_ui()
         
         #Debug mode - Can be used to show debug on screen
         key = 'debug'
@@ -1186,7 +1220,7 @@ class UIController():
         ui_object = UIText(e_id= key,
                             value= '',
                             text= 'Name: {}',
-                            position= (0,0),
+                            position= (10,0),
                             active= True)
         self.element_list[key] = ui_object
         
@@ -1194,8 +1228,8 @@ class UIController():
         key = 'score'
         ui_object = UIText(e_id= key,
                             value= '',
-                            text= 'Score: {}',
-                            position= (0,100),
+                            text= 'Fitness: {}',
+                            position= (10,50),
                             active= True)
         self.element_list[key] = ui_object
         
@@ -1204,7 +1238,7 @@ class UIController():
         ui_object = UIText(e_id= key,
                             value= '',
                             text= 'Distance: {}',
-                            position= (0,200),
+                            position= (10,100),
                             active= True)
         self.element_list[key] = ui_object
         
@@ -1213,7 +1247,7 @@ class UIController():
         ui_object = UIText(e_id= key,
                             value= world.generation,
                             text= 'Generation: {}',
-                            position= (SCREEN_WIDTH - 200,0),
+                            position= (SCREEN_WIDTH - 300,0),
                             active= True)
         self.element_list[key] = ui_object
         
@@ -1221,7 +1255,87 @@ class UIController():
         ui_object = UIText(e_id= key,
                             value= '',
                             text= 'Alive: {}',
-                            position= (SCREEN_WIDTH - 200,100),
+                            position= (SCREEN_WIDTH - 300,50),
+                            active= True)
+        self.element_list[key] = ui_object    
+        
+    def set_smarty_hidden_ui(self):
+        global world
+        # Name of closest smarty
+        key = 'name'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Name: {}',
+                            position= (10,0),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        #Score of closest smarty
+        key = 'fitness'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Score: {}',
+                            position= (10,50),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        #Distance to target of closest smarty
+        key = 'distance'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Distance: {}',
+                            position= (10,100),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        #Current generation
+        key = 'generation'
+        ui_object = UIText(e_id= key,
+                            value= world.generation,
+                            text= 'Generation: {}',
+                            position= (SCREEN_WIDTH - 300,0),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        key = 'alive'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Alive: {}',
+                            position= (SCREEN_WIDTH - 300,50),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        key = 'input_j'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Jump {}',
+                            position= (SCREEN_WIDTH //2, (SCREEN_HEIGHT // 2) - 100),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        key = 'input_w'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Move {}',
+                            position= (SCREEN_WIDTH //2, (SCREEN_HEIGHT // 2) - 150),
+                            active= True)
+        self.element_list[key] = ui_object
+    
+    def set_smarty_background_ui(self):
+        global global_counter
+        key = 'counter'
+        ui_object = UIText(e_id= key,
+                            value= global_counter,
+                            text= 'Generation: {}',
+                            position= (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        key = 'remaining'
+        ui_object = UIText(e_id= key,
+                            value= global_counter,
+                            text= '{a}/{b}'.format(a= '{}', b= GENERATIONS),
+                            position= (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 100),
                             active= True)
         self.element_list[key] = ui_object
     
@@ -1270,6 +1384,15 @@ class UIController():
                              height= 100)
         self.element_list[key] = ui_object
         
+        key = 'best_button'
+        ui_object = UIButton(e_id= key,
+                             button_action= 'best',
+                             text= 'Smart AI - Best',
+                             position= (600, 550),
+                             width= 400,
+                             height= 100)
+        self.element_list[key] = ui_object
+        
     def update_labels(self,data):
         #Updates label values from data
         #@params dictionary of {key:value}
@@ -1278,7 +1401,6 @@ class UIController():
                 if e_key == d_key:
                     self.element_list[e_key].update_value(data[d_key])
         
-        
     def draw(self):
         """
         Draws all UI elements loaded to the UI Controller
@@ -1286,12 +1408,7 @@ class UIController():
         """
         for key in self.element_list:
             self.element_list[key].update()
-            
-        global world
-        debug_value = "{a}/{b}".format(a= world.relative_scroll, b= -world.scroll_cap)
-        self.element_list['debug'].update_value(debug_value)
-                
-                
+                             
     def update(self):
         for key in self.element_list:
             if self.element_list[key].type == 'button':
@@ -1373,7 +1490,7 @@ def run_singleplayer():
 
 def run_smarties(genomes, config):
     
-    global world
+    global world, global_counter
     world.set_game_mode(3)
     world.load_world(1)
     
@@ -1402,7 +1519,6 @@ def run_smarties(genomes, config):
         
         ge.append(genome)
     
-    print("Forced Evolution score:{}".format((world.num_items * ITEM_SCORE) + GOAL_SCORE))
     run = True
     while run and len(smarties) > 0:
         smarties_alive = len(smarties)
@@ -1412,8 +1528,6 @@ def run_smarties(genomes, config):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
-                SETTINGS['generation'] -= 1
-                save_settings()
                 pygame.quit()
                 break
             
@@ -1428,6 +1542,236 @@ def run_smarties(genomes, config):
                     
                     
         closest_smarty = smarties[closest_index]
+        closest_smarty.followed = True
+        closest_smarty.relative_scroll = world.relative_scroll - (closest_smarty.rect.x - (SCREEN_WIDTH // 2))
+        closest_tag = closest_smarty.player_tag
+        closest_distance = closest_smarty.distance_to_target
+        closest_score = closest_smarty.fitness
+        world.total_scroll = closest_smarty.total_scroll
+               
+        #Generate Inputs to character
+        for n, smarty in enumerate(smarties):
+
+            smarty_distance = smarty.distance_to_target
+            #To move: send distance to goal, if on ground, if it's moving and it's distance travelled
+            output = networks[smarties.index(smarty)].activate((smarty.get_is_on_ground(), smarty.scan_top_f, smarty.scan_mid_f, smarty.scan_bot_f, smarty.scan_mid_r ))
+            
+            #Activate movements based on NN outputs
+            if output[0] > MOVE_BIAS:
+                smarty.moving_right = True
+                smarty.moving_left = False
+            elif output[0] < -MOVE_BIAS:
+                smarty.moving_right = False
+                smarty.moving_left = True
+            else:
+                smarty.moving_right = False
+                smarty.moving_left = False
+                
+            if output[1] > JUMP_BIAS:
+                smarty.jump = True
+            
+            #Process inputs to character
+            
+            collide = smarty.update()
+            
+            if SHOW_MAKING_PROGRESS:
+                smarty.log("[a: {a}] < [b: {b}] = [{c}]".format(a= smarty.distance_to_target, b= smarty.prev_distance_to_target, c= smarty.distance_to_target < smarty.prev_distance_to_target))
+            
+            #if smarty.get_progress():
+                #ge[n].fitness += PROGRESS_FITNESS
+                
+            if smarty.scan_mid_f == 1 and smarty.scan_bot_f == 1: #If they're stuck against a wall, deduct fitness
+                ge[n].fitness -= STUCK_PENALTY
+                
+            if smarty.scan_mid_r == 1:
+                ge[n].fitness -= (STUCK_PENALTY / 2)
+                
+            if collide == False or collide == 0 or collide == -1: #If smarty is dead, or dies
+                if collide == -1: # smart died from the laser :(
+                    ge[n].fitness -= LASER_PENALTY
+                    
+                list_index = smarties.index(smarty)
+                ge[list_index].fitness -= 1
+                networks.pop(list_index)
+                ge.pop(list_index)
+                smarties.pop(list_index)
+            else:
+                if collide == 1: #If smarty hits an item
+                    ge[n].fitness += ITEM_FITNESS
+                elif collide == 2: #If smarty hits the goal
+                    ge[n].fitness += GOAL_FITNESS
+                
+                smarty.fitness = ge[n].fitness
+                
+        
+        if SHOW_UI_DEBUG:
+            print("name: {n} | index: {i} | distance: {d} | screen scroll: {ss}".format(n= closest_tag,
+                                                                  i= closest_index,
+                                                                  d= closest_distance,
+                                                                  ss= world.screen_scroll))
+            
+        world.update_ui({'name': closest_tag,
+                            'score': closest_smarty.fitness,
+                            'distance': closest_distance,
+                            'alive': smarties_alive})
+        
+        closest_smarty.draw_scan_dots()
+        
+        world.update_ui({'debug': 'now:{a} > prev:{b} = {c}'.format(a= closest_smarty.distance_travelled, b= closest_smarty.prev_distance, c= closest_smarty.get_progress())})
+
+        pygame.display.update()
+        
+    global_counter += 1
+
+def run_smarties_hidden(genomes, config):
+    
+    global world, global_counter, global_loop
+    world.set_game_mode(5)
+    world.load_world(1)
+    
+    networks = []
+    smarties = []
+    ge = []
+    
+    action = False
+    
+    for genome_id, genome in genomes:
+        genome.fitness = 0
+        
+        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        networks.append(net)
+        
+        sprite_id = random.randint(0,DYNAMIC_SPRITE_COUNT-2)
+        smarty = world.generate_player(p_id= genome_id,
+                                           sprite_id= sprite_id,
+                                           p_type= 'Smarty')
+        smarty.followed = False
+        smarty.hidden = True
+        
+        smarties.append(smarty)
+        
+        ge.append(genome)
+    
+    print("Forced Evolution score:{}".format((world.num_items * ITEM_SCORE) + GOAL_SCORE))
+    run = True
+    while run and len(smarties) > 0:
+        smarties_alive = len(smarties)
+        world.update_hidden()
+               
+        #Generate Inputs to character
+        for n, smarty in enumerate(smarties):
+
+            smarty_distance = smarty.distance_to_target
+            #To move: send distance to goal, if on ground, if it's moving and it's distance travelled
+            output = networks[smarties.index(smarty)].activate((smarty.get_is_on_ground(), smarty.scan_top_f, smarty.scan_mid_f, smarty.scan_bot_f, smarty.scan_mid_r ))
+            
+            smarty.output_w = output[0]
+            smarty.output_j = output[1]
+                
+            #Activate movements based on NN outputs
+            if output[0] > MOVE_BIAS:
+                smarty.moving_right = True
+                smarty.moving_left = False
+            elif output[0] < -MOVE_BIAS:
+                smarty.moving_right = False
+                smarty.moving_left = True
+            else:
+                smarty.moving_right = False
+                smarty.moving_left = False
+                
+            if output[1] > JUMP_BIAS:
+                smarty.jump = True
+            
+            #Process inputs to character
+            
+            collide = smarty.update_hidden()
+            
+            #if smarty.get_progress():
+                #ge[n].fitness += PROGRESS_FITNESS
+            
+            if smarty.scan_mid_f == 1 and smarty.scan_bot_f == 1: #If they're stuck against a wall, deduct fitness
+                ge[n].fitness -= STUCK_PENALTY
+                
+            if smarty.scan_mid_r == 1:
+                ge[n].fitness -= (STUCK_PENALTY / 2)
+                
+            if smarty.scan_mid_f == -1 or smarty.scan_top_f == -1:
+                ge[n].fitness -= (STUCK_PENALTY / 2)
+                
+            if collide == False or collide == 0 or collide == -1: #If smarty is dead, or dies
+                if collide == -1: # smart died from the laser :(
+                    ge[n].fitness -= LASER_PENALTY
+                    
+                list_index = smarties.index(smarty)
+                ge[list_index].fitness -= 1
+                networks.pop(list_index)
+                ge.pop(list_index)
+                smarties.pop(list_index)
+            else:
+                if collide == 1: #If smarty hits an item
+                    ge[n].fitness += ITEM_FITNESS
+                elif collide == 2: #If smarty hits the goal
+                    ge[n].fitness += GOAL_FITNESS
+                
+                smarty.fitness = ge[n].fitness
+        
+        if len(smarties) > 0 and False:
+            closest_smarty = smarties[0]
+
+            world.update_ui({'name': closest_smarty.player_tag,
+                            'score': closest_smarty.fitness,
+                            'distance': closest_smarty.distance_travelled,
+                            'alive': smarties_alive,
+                            'input_j': closest_smarty.output_j,
+                            'input_w': closest_smarty.output_w})
+
+            world.update_ui({'debug': 'now:{a} > prev:{b} = {c}'.format(a= closest_smarty.distance_travelled, b= closest_smarty.prev_distance, c= closest_smarty.get_progress())})
+
+            pygame.display.update()
+            
+    global_counter += 1
+    global_loop += 1
+    
+def run_smarties_fittest(genomes, config):
+    
+    global world
+    world.set_game_mode(3)
+    world.load_world(1)
+    
+    networks = []
+    smarties = []
+    ge = []
+    
+    action = False
+    
+    for genome_id, genome in genomes:
+        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        networks.append(net)
+        
+        sprite_id = random.randint(0,DYNAMIC_SPRITE_COUNT-2)
+        smarty = world.generate_player(p_id= genome_id,
+                                           sprite_id= sprite_id,
+                                           p_type= 'Smarty')
+        smarty.followed = False
+        
+        smarties.append(smarty)
+        
+        ge.append(genome)
+    
+    run = True
+    while run and len(smarties) > 0:
+        smarties_alive = len(smarties)
+        clock.tick(GAME_FRAME_RATE)
+        world.update()
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+                save_settings()
+                pygame.quit()
+                break             
+                    
+        closest_smarty = smarties[0]
         closest_smarty.followed = True
         closest_smarty.relative_scroll = world.relative_scroll - (closest_smarty.rect.x - (SCREEN_WIDTH // 2))
         closest_tag = closest_smarty.player_tag
@@ -1462,27 +1806,13 @@ def run_smarties(genomes, config):
             
             if SHOW_MAKING_PROGRESS:
                 smarty.log("[a: {a}] < [b: {b}] = [{c}]".format(a= smarty.distance_to_target, b= smarty.prev_distance_to_target, c= smarty.distance_to_target < smarty.prev_distance_to_target))
-            
-            if smarty.get_progress:
-                ge[n].fitness += PROGRESS_FITNESS
                 
-            if collide == False or collide == 0 or collide == -1: #If smarty is dead, or dies
-                if collide == -1: # smart died from the laser :(
-                    ge[n].fitness -= LASER_PENALTY
-                    
+            if collide == False or collide == 0 or collide == -1: #If smarty is dead, or dies                   
                 list_index = smarties.index(smarty)
                 ge[list_index].fitness -= 1
                 networks.pop(list_index)
                 ge.pop(list_index)
-                smarties.pop(list_index)
-            else:
-                if collide == 1: #If smarty hits an item
-                    ge[n].fitness += ITEM_FITNESS
-                elif collide == 2: #If smarty hits the goal
-                    ge[n].fitness += GOAL_FITNESS
-                
-                smarty.fitness = ge[n].fitness
-                
+                smarties.pop(list_index)    
         
         if SHOW_UI_DEBUG:
             print("name: {n} | index: {i} | distance: {d} | screen scroll: {ss}".format(n= closest_tag,
@@ -1498,7 +1828,7 @@ def run_smarties(genomes, config):
         pygame.display.update()
         
     #return check_action(action) 
-            
+     
 def run_dummies(population= DUMMY_POPULATION, batches= DUMMY_BATCHES):
     global world
     world.set_game_mode(2)
@@ -1649,6 +1979,9 @@ def run_menu():
             elif action == 'long':
                 next_screen = 4
                 run = False
+            elif action == 'best':
+                next_screen = 5
+                run = False
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -1675,6 +2008,12 @@ def check_action(action):
             
         elif action == 'smarty':
             return 3
+        
+        elif action == 'long':
+            return 4
+        
+        elif action == 'best':
+            return 5
         
         elif action == 'menu':
             return 0
@@ -1728,16 +2067,31 @@ def save_settings():
 
             print('Saving [{k}:{t}:{v}] to file...'.format(k= key, t= t, v= value))
             settings_writer.writerow([key, t, value])   
+ 
+def scan_genome_directory():
+    d_list = []
+    for (dirpath, dirnames, filenames) in walk('genomes/'):
+        d_list.extend(filenames)
+        break
+    
+    print(d_list)
+    return d_list
+    
+  
   
 # --- At Run ---
 read_settings()
+scan_genome_directory()
+current_screen = 0
 world = World(0)
 world.load_name_list()
-current_screen = 0
 checkpointer = False
+global_counter = 0
 
 run = True
 while run:
+    start_time = time.time()
+    
     if current_screen == 0:
         #Main Menu
         current_screen = run_menu()
@@ -1770,33 +2124,108 @@ while run:
         
         if SETTINGS['long_started']:
             print('Restoring checkpoint...')
-            genome_file = '{a}{b}'.format(a= SETTINGS['filename_prefix'], b= SETTINGS['generation'])
-            SETTINGS['generation'] -= 1
+            genome_file = '{a}{b}'.format(a= SETTINGS['filename_prefix'], b= SETTINGS['long_generation'])
             population = neat.Checkpointer.restore_checkpoint(genome_file)
+            global_counter = SETTINGS['long_generation']
         else:
             print('Creating new population...')   
             population = neat.Population(config)
-            SETTINGS['long_started'] = True
+            SETTINGS['long_generation'] = -1
+            global_counter = 0
 
         population.add_reporter(neat.StdOutReporter(True))
         stats = neat.StatisticsReporter()
         
         population.add_reporter(stats)
-        population.add_reporter(neat.Checkpointer(generation_interval= 1,
+        population.add_reporter(neat.Checkpointer(generation_interval= GENERATIONS,
                                                   time_interval_seconds=None,
                                                   filename_prefix= SETTINGS['filename_prefix']))
+            
+        ui = UIController() 
+        smart_run = True
+        while smart_run:
+            fittest = population.run(run_smarties, GENERATIONS)
+            print("\n== Only the strongest shall survive... ==\n{!s}".format(fittest))
+            SETTINGS['long_started'] = True
+            SETTINGS['long_generation'] += GENERATIONS
+            print(SETTINGS['long_generation'])
+            SETTINGS['test_genome_file'] = '{a}{b}'.format(a= SETTINGS['filename_prefix'], b= SETTINGS['long_generation'])
+            print(SETTINGS['test_genome_file'])
+            save_settings()
         
-        fittest = population.run(run_smarties, GENERATIONS)
+        
+    elif current_screen == 5:
+        #Long but only show best
+        config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, LONG_CONFIG_FILE_PATH)    
+        
+        if SETTINGS['long_started']:
+            print('Restoring checkpoint...')
+            genome_file = '{a}{b}'.format(a= SETTINGS['filename_prefix'], b= SETTINGS['long_generation'])
+            population = neat.Checkpointer.restore_checkpoint(genome_file)
+            global_counter = SETTINGS['long_generation']
+        else:
+            print('Creating new population...')   
+            population = neat.Population(config)
+            SETTINGS['long_generation'] = -1
+            global_counter = 0
 
-        print("\n== Only the strongest shall survive... ==\n{!s}".format(fittest))
+        population.add_reporter(neat.StdOutReporter(True))
+        stats = neat.StatisticsReporter()
+        
+        population.add_reporter(stats)
+        population.add_reporter(neat.Checkpointer(generation_interval= GENERATIONS,
+                                                  time_interval_seconds=None,
+                                                  filename_prefix= SETTINGS['filename_prefix']))
+            
+        ui = UIController() 
+        smart_run = True
+        while smart_run:
+            fittest = ''
+            finished = True
+            running = True
+            ui.set_screen_ui(5)
+            pool = ThreadPoolExecutor(3)
+            global_loop = 0
+            while running:
+                if finished:
+                    future = pool.submit(population.run, run_smarties_hidden, GENERATIONS)
+                    print("hello")
+                    finished = False
+                else:
+                    clock.tick(GAME_FRAME_RATE)
+                    screen.fill((175,175,175))
+                    ui.update_labels({'counter': global_counter,
+                                      'remaining': global_loop})
+                    ui.draw()
+                    
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            pool.shutdown(wait= False)
+                            running = False
+                            smart_run = False
+                            run = False
+                            break
+                    
+                    if future.done():
+                        fittest = future.result()
+                        print("\n== Only the strongest shall survive... ==\n{!s}".format(fittest))
+                        SETTINGS['long_started'] = True
+                        SETTINGS['long_generation'] += GENERATIONS
+                        print(SETTINGS['long_generation'])
+                        SETTINGS['test_genome_file'] = '{a}{b}'.format(a= SETTINGS['filename_prefix'], b= SETTINGS['long_generation'])
+                        print(SETTINGS['test_genome_file'])
+                        save_settings()
+                        run_smarties([(0,fittest)],config)
+                        global_counter -= 1
+                        running = False
+                        
+                    pygame.display.update()
         
     elif current_screen == -1:
         #Quit signal
         run = False
     else:
         print("UNKNOWN SCREEN: {}".format(current_screen))
-    
-    global_counter += 1
 
 save_settings()
     

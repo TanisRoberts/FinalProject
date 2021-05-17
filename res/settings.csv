@@ -1,0 +1,8 @@
+long_started:b:True
+generation:i:0
+long_generation:i:9
+reads:i:16
+filename_prefix:s:genomes/LIV/v2/neatcp_
+generation_average_time:f:999.0
+best_player_time:f:963.0
+test_genome_file:s:genomes/LIV/v2/neatcp_9

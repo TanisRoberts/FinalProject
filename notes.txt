@@ -1,0 +1,87 @@
+get_distance_between_sprites - distance between the center of two given sprites, can be used as a fitness measure
+checkpoints +5 fitness
+finish line +100 fitness
+
+https://stackoverflow.com/questions/46614526/how-to-import-a-csv-file-into-a-data-array
+https://stackoverflow.com/questions/20012307/how-can-i-get-the-coordinates-of-a-sprites-position-in-pygame
+https://www.w3schools.com/python/gloss_python_array_length.asp
+https://www.w3schools.com/python/python_arrays.asp
+https://www.w3schools.com/python/python_operators.asp
+
+
+CURRENT VIDEO: https://www.youtube.com/watch?v=JTM8_pcQOUU&list=PLjcN1EyupaQm20hlUE11y9y8EY2aXLpnv&index=11
+
+x background research before the methodology
+x Highlight the AI section, include a research
+x Put what is a neural network in background research
+x Flesh out game and add multiple levels for singleplayer, plus start and level complete screens
+Going from javascript to python, then arcade to pygame
+javascript game would have included having the ai watch the screen, whereas python lets it be a part of the game.
+python arcade is good for physics stuff, but it quickly gets out of time with the neural network
+pygame lets me keep time manually 
+
+make a graph from the fitness of the generations
+a successful neural network AI would show a positive correlation between generations and average fitness
+may be linear, exponential or diminishing
+
+give the game to 10 players, get them to play the levels 10 times and get their time from each attempt
+graph the average of attempt 1, attempt 2 etc and compare to smart ai times
+maybe even compare to dummies
+
+if you can't find anything on neural networks applications in games, just say that you couldnt 
+
+https://ieeexplore-ieee-org.ezproxy.brighton.ac.uk/document/488238
+
+moved all interactibles into one group instead of mutliple to improve performance
+
+added 'view' of the smart ai so it can detect things infront of it
+
+completion timescores, fitness:
+[09]: 1017, 9845.7
+[19]: 1013, 9847.7
+[29]: 1010, 9847.9
+[39]: 1008, 9847.7
+[49]: 1009, 9848.3
+[59]: 1013, 9898.1
+[69]: 1013, 9898.3
+[79]: 1010, 9898.7
+[89]: 1008, 9898.8
+[99]: 1008, 9898.8
+
+Lots of references
+Introduction about how neural networks are currently being applied
+                short sentence on how they can be applied to video games
+
+Background research of What is a neural network
+        how are neural networks applied to video games at the moment and how could they be
+        why I have chosen this topic
+
+
+No references
+Methodology is what choices I've made
+                comparison to why I haven't made other choices
+
+Product description is what I have made
+            requirements:
+                Needs to be playable by a single player or by the AI and have the same rules
+                Ai needs to learn over time and improve
+
+Critical review is talking about how it went
+            talk about feedback from questionaires
+            talk about what I think went well
+            talk about what I think could be improved update_animation
+
+Reference EVERYTHING
+
+Appendix 1: meeting email
+Appendix 2: Github link
+Appendix 3: questionaire link
+
+Do the abstract once the report is finished
+
+12/05:  Just get methodology and Product description done first. Come back to research and intro
+        Send out the game and questionaire ASAP
+        Talking about Python: https://ieeexplore-ieee-org.ezproxy.brighton.ac.uk/document/4160250
+
+https://kanbanize.com/kanban-resources/getting-started/what-is-kanban
+

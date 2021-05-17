@@ -1,0 +1,183 @@
+world_data = []
+    for row in range(ROWS):
+        r = [-1] * COLS
+        world_data.append(r)
+
+    with open(MAP_CSV_FILE_PATH, newline='') as mapfile:
+        reader = csv.reader(mapfile, delimiter=',')
+        for x, row in enumerate(reader):
+            for y, tile in enumerate(row):
+                world_data[x][y] = int(tile)
+
+    world = World()
+    world.process_data(world_data)
+
+    item_list = world.item_list
+    goal_list = world.goal_list
+    hazard_list = world.hazard_list
+    wall_list = world.wall_list
+
+    wall_group = world.wall_group
+    item_group = world.item_group
+    hazard_group = world.hazard_group
+    goal_group = world.goal_group
+
+    player_start_x = world.player_start_position_x
+    player_start_y = world.player_start_position_y
+    player_active = False
+    player = Optional[Player]
+
+    dummy_list = []
+    dead_dummy_count = 0
+
+    strongest_dummy = Optional[Player]
+    goal_position = world.goal_position
+    new_index = 0
+    closest_index = -1
+
+    marker_list = []
+    name_list = get_names()
+    spawn_offset = 0
+    interval = 0
+    
+    closest_distance = -1
+    closest_tag = ''
+
+    # -- Generate 'Players'
+    if GENERATE_PLAYER:
+        player = generate_player(goal_position)
+        player_active = True
+        game_mode = 1
+
+    # -- Generate 'Dummies' [TEMPORARY UNTIL AI CODED]
+    if GENERATE_DUMMIES:
+        generate_dummies_bulk(spawn_offset,goal_position)
+        game_mode = 2
+
+    # -- Begin Play
+    run = True
+    
+    ui = UIController()
+    
+    print("\n --- Begin Play ---\n")
+
+    while run:
+
+        # -- Update Game
+        clock.tick(GAME_FRAME_RATE)
+        draw_bg()       
+
+        # -- Update Items
+        for item in item_list:
+            item.update_animation()
+            item.draw()
+
+        # -- Update Goals
+        for goal in goal_list:
+            goal.update_animation()
+            goal.draw()
+
+        # -- Update Hazards
+        for hazard in hazard_list:
+            hazard.draw()
+
+        # -- Update Markers
+        for marker in marker_list:
+            marker.draw()
+
+        # -- Update Players
+        # - Events
+        for event in pygame.event.get():
+            #quit
+            if event.type == pygame.QUIT:
+                run = False
+            if game_mode == 1:
+                if player.is_alive:
+                    # -- Keyboard Press
+                    if event.type == pygame.KEYDOWN:
+                        if any(key == event.key for key in LEFT_KEYS):
+                            player.moving_left = True
+                        if any(key == event.key for key in RIGHT_KEYS):
+                            player.moving_right = True
+                        if any(key == event.key for key in UP_KEYS):
+                            player.jump = True
+                        if event.key == pygame.K_ESCAPE:
+                            run = False
+                    # -- Keyboard Release
+                    if event.type == pygame.KEYUP:
+                        if any(key == event.key for key in LEFT_KEYS):
+                            player.moving_left = False
+                        if any(key == event.key for key in RIGHT_KEYS):
+                            player.moving_right = False
+
+        if game_mode == 1:       
+            if player.is_alive:
+                player.update()
+                ui.update({'score': player.score,
+                           'distance': player.get_distance_to_target()})
+            else:
+                screen_scroll = 0
+                player_active = False
+
+        # -- Update Dummies
+        if GENERATE_DUMMIES:
+            dummy_count = 0
+
+            for index, dummy in enumerate(dummy_list):
+                
+                distance = dummy.get_distance_to_target()
+                if closest_distance == -1 or distance < closest_distance:
+                    closest_tag = dummy.player_tag
+                    closest_distance = distance
+                    closest_index = dummy_list.index(dummy)
+
+                if dummy.is_alive:
+                    if dummy.is_in_air:
+                        dummy.jump = False
+                    else:
+                        do_jump = random.randint(0,10)
+                        jump_tolerance = 10
+                        dummy.jump = do_jump >= jump_tolerance
+
+                    dummy.update()
+                    dummy_count += 1
+
+            # - Set new closest Dummy
+            for dummy in dummy_list:
+                if dummy.is_alive:
+                    if dummy.player_tag == closest_tag:
+                        dummy.followed = True
+                    else:
+                        dummy.followed = False
+            
+            
+            ui.update({'name': dummy_list[closest_index].player_tag,
+                       'score': dummy_list[closest_index].score,
+                       'distance': dummy_list[closest_index].get_distance_to_target(),
+                       'alive': dummy_count})
+
+            # - Respawn Dummies when they're all dead [Deactivated temporarily]
+            if dummy_count <= 0:
+                #generate_dummies_bulk(spawn_offset,goal_position)
+                strongest_dummy.log("is the current strongest dummy at {}!",{strongest_dummy.score})
+                print("=== Strongest Dummy was: {} ===".format(strongest_dummy.player_tag))
+                screen_scroll = 0
+                run = False
+
+            #FOR DEBUG
+            if interval > 20:
+                print("Currently following          {}".format(closest_tag))
+                print("Their [distance] is         {}".format(dummy_list[closest_index].followed))
+                print("The [screen_scroll] is       {}".format(screen_scroll))
+                interval = 0
+            else:
+                interval += 1
+
+
+        # -- Update World
+        world.draw()
+        ui.draw()
+
+        pygame.display.update()        
+
+pygame.quit()

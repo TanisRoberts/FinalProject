@@ -1135,7 +1135,7 @@ class UIController():
         key = 'distance'
         ui_object = UIText(e_id= key,
                             value= '',
-                            text= 'Distance: {}',
+                            text= 'Timescore: {}',
                             position= (0,30),
                             active= True)
         self.element_list[key] = ui_object
@@ -1166,6 +1166,15 @@ class UIController():
                             text= '[Press Space to Start...]',
                             position= ((SCREEN_WIDTH // 2) - 200, (SCREEN_HEIGHT // 2) + 250),
                             active= True)
+        self.element_list[key] = ui_object
+        
+        key = 'menu_button'
+        ui_object = UIButton(e_id= key,
+                             button_action= 'menu',
+                             text= 'Return to Menu',
+                             position= (20, SCREEN_HEIGHT - 200),
+                             width= 200,
+                             height= 50)
         self.element_list[key] = ui_object
         
     def set_game_end_ui(self):
@@ -1237,7 +1246,7 @@ class UIController():
         key = 'distance'
         ui_object = UIText(e_id= key,
                             value= '',
-                            text= 'Distance: {}',
+                            text= 'Timescore: {}',
                             position= (0,200),
                             active= True)
         self.element_list[key] = ui_object
@@ -1292,7 +1301,7 @@ class UIController():
         key = 'distance'
         ui_object = UIText(e_id= key,
                             value= '',
-                            text= 'Distance: {}',
+                            text= 'Timescore: {}',
                             position= (10,100),
                             active= True)
         self.element_list[key] = ui_object
@@ -1313,6 +1322,15 @@ class UIController():
                             position= (SCREEN_WIDTH - 300,50),
                             active= True)
         self.element_list[key] = ui_object    
+        
+        key = 'menu_button'
+        ui_object = UIButton(e_id= key,
+                             button_action= 'menu',
+                             text= 'Return to Menu',
+                             position= (20, SCREEN_HEIGHT - 200),
+                             width= 200,
+                             height= 50)
+        self.element_list[key] = ui_object
         
     def set_smarty_hidden_ui(self):
         global world
@@ -1338,7 +1356,7 @@ class UIController():
         key = 'distance'
         ui_object = UIText(e_id= key,
                             value= '',
-                            text= 'Distance: {}',
+                            text= 'Timescore: {}',
                             position= (10,100),
                             active= True)
         self.element_list[key] = ui_object
@@ -1382,7 +1400,7 @@ class UIController():
         ui_object = UIText(e_id= key,
                             value= global_counter,
                             text= 'Generation: {}',
-                            position= (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2),
+                            position= (20, (SCREEN_HEIGHT // 2) + 100),
                             active= True)
         self.element_list[key] = ui_object
         
@@ -1390,7 +1408,15 @@ class UIController():
         ui_object = UIText(e_id= key,
                             value= global_counter,
                             text= '{a}/{b}'.format(a= '{}', b= GENERATIONS),
-                            position= (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 100),
+                            position= (20, (SCREEN_HEIGHT // 2) + 150),
+                            active= True)
+        self.element_list[key] = ui_object
+        
+        key = 'text'
+        ui_object = UIText(e_id= key,
+                            value= '',
+                            text= 'Cannot return to menu or exit while running...',
+                            position= (20, (SCREEN_HEIGHT // 2) + 250),
                             active= True)
         self.element_list[key] = ui_object
     
@@ -1485,20 +1511,27 @@ def run_singleplayer():
     started = False
     
     while not started:
-        world.draw_still()
+        button = world.draw_still()
         
         for event in pygame.event.get():
             #quit
             if event.type == pygame.QUIT:
                 run = False
                 respawn = False
+                started = True
                 action = 'exit'
                 break
             
             if event.type == pygame.KEYUP:
                 if event.key == pygame.K_SPACE:
                     started = True
-    
+                
+        if button != False:
+            if button == 'menu':
+                run = False
+                action = 'menu'
+                return check_action(action)
+        
         pygame.display.update()
         
     world.set_game_mode(1)
@@ -1581,6 +1614,7 @@ def run_singleplayer():
                             
                         cur_timescore = timescore
                         cur_score = player.score
+                        print('Skill rating: {s}/{t} = {r}%'.format(s= cur_score, t= cur_timescore, r= (cur_score/cur_timescore) * 100))
                         run = False
                         respawn = False
                 
@@ -1630,6 +1664,7 @@ def run_smarties(genomes, config):
     smarties = []
     ge = []
     times = []
+    scores = []
     
     closest_tag = ''
     closest_index = 0
@@ -1656,7 +1691,15 @@ def run_smarties(genomes, config):
     while run and len(smarties) > 0:
         smarties_alive = len(smarties)
         clock.tick(GAME_FRAME_RATE)
-        world.update()
+        button = world.update()
+        
+        if button != False:
+                if button == 'restart':
+                    run = False
+                    action = 'smarty'
+                elif button == 'menu':
+                    run = False
+                    action = 'menu'
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -1724,7 +1767,9 @@ def run_smarties(genomes, config):
                 ge[n].fitness += ITEM_FITNESS
             elif collide == 2: #If smarty hits the goal
                 times.append(smarty.time_score)
-                ge[n].fitness += (GOAL_FITNESS - (smarty.time_score))
+                scores.append(smarty.score)
+                ge[n].fitness = GOAL_FITNESS
+                ge[n].fitness += (GOAL_FITNESS * ((smarty.score / smarty.time_score) * 100)) / 100
                 collide = -1
                 
             smarty.fitness = ge[n].fitness
@@ -1761,11 +1806,19 @@ def run_smarties(genomes, config):
     global_counter += 1
     
     if len(times) > 0:
+        print('\n== times ==')
         print(times)
-        average = sum(times) / len(times)
-        print(average)
-        if average >= 0:
-            SETTINGS['generation_average_time'] = average
+        average_time = sum(times) / len(times)
+        print(average_time)
+        print('\n== scores ==')
+        print(scores)
+        average_score = sum(scores) / len(scores)
+        print(average_score)
+        if average_time >= 0:
+            SETTINGS['generation_average_time'] = average_time
+            
+    if action != False:
+        return action
 
 def run_smarties_hidden(genomes, config):
     
@@ -1777,6 +1830,7 @@ def run_smarties_hidden(genomes, config):
     smarties = []
     ge = []
     times = []
+    scores = []
     
     action = False
     
@@ -1846,7 +1900,9 @@ def run_smarties_hidden(genomes, config):
                 ge[n].fitness += ITEM_FITNESS
             elif collide == 2: #If smarty hits the goal
                 times.append(smarty.time_score)
-                ge[n].fitness += (GOAL_FITNESS - (smarty.time_score))
+                scores.append(smarty.score)
+                ge[n].fitness = GOAL_FITNESS
+                ge[n].fitness += (GOAL_FITNESS * ((smarty.score / smarty.time_score) * 100)) / 100
                 collide == -1
             
             smarty.fitness = ge[n].fitness
@@ -1879,8 +1935,14 @@ def run_smarties_hidden(genomes, config):
     global_loop += 1
     
     if len(times) > 0:
-        average = sum(times) / len(times)
-        print(average)
+        print('\n== times ==')
+        print(times)
+        average_time = sum(times) / len(times)
+        print(average_time)
+        print('\n== scores ==')
+        print(scores)
+        average_score = sum(scores) / len(scores)
+        print(average_score)
     
 def run_dummy():
     global world, cur_timescore, cur_score
@@ -1893,20 +1955,27 @@ def run_dummy():
     started = False
     
     while not started:
-        world.draw_still()
+        button = world.draw_still()
         
         for event in pygame.event.get():
             #quit
             if event.type == pygame.QUIT:
                 run = False
                 respawn = False
+                started = True
                 action = 'exit'
                 break
             
             if event.type == pygame.KEYUP:
                 if event.key == pygame.K_SPACE:
                     started = True
-    
+                
+        if button != False:
+            if button == 'menu':
+                run = False
+                action = 'menu'
+                return check_action(action)
+        
         pygame.display.update()
         
     world.set_game_mode(1)
@@ -2358,6 +2427,8 @@ while run:
 
         print("\n== Only the strongest shall survive... ==\n{!s}".format(fittest))
         
+        current_screen == 0
+        
     elif current_screen == 4:
         #Smart AI (Long)
         config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, LONG_CONFIG_FILE_PATH)    
@@ -2427,6 +2498,7 @@ while run:
             while running:
                 if finished:
                     future = pool.submit(population.run, run_smarties_hidden, GENERATIONS)
+                    SETTINGS['long_generation'] += GENERATIONS
                     finished = False
                 else:
                     clock.tick(GAME_FRAME_RATE)
@@ -2447,12 +2519,15 @@ while run:
                         fittest = future.result()
                         print("\n== Only the strongest shall survive... ==\n{!s}".format(fittest))
                         SETTINGS['long_started'] = True
-                        SETTINGS['long_generation'] += GENERATIONS
                         SETTINGS['test_genome_file'] = '{a}{b}'.format(a= SETTINGS['filename_prefix'], b= SETTINGS['long_generation'])
-                        run_smarties([(0,fittest)],config)
+                        action = run_smarties([(0,fittest)],config)
                         save_settings()
                         global_counter -= 1
                         running = False
+                        if action == 'menu':
+                            smart_run = False
+                            current_screen = 0
+                            break
                         
                     pygame.display.update()
         

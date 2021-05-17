@@ -11,7 +11,7 @@ SETTINGS = {}
 Master switch for all debug settings.
 Setting this to false will disable all other debug settings.
 """
-IS_DEBUG = True
+IS_DEBUG = False
 
 
 SHOW_COLLISION_BOXES = False if IS_DEBUG else False
@@ -21,15 +21,15 @@ HIGHLIGHT_CLOSEST_PLAYER = False if IS_DEBUG else False
 HIGHLIGHT_COLOUR = (52,207,235)
 
 
-SHOW_MARKER_LOGS = False if IS_DEBUG else False
-SHOW_ALL_PLAYER_LOGS = False if IS_DEBUG else False
+SHOW_MARKER_LOGS = True if IS_DEBUG else False
+SHOW_ALL_PLAYER_LOGS = True if IS_DEBUG else False
 SHOW_CLOSEST_PLAYER_LOGS = True if IS_DEBUG else False
-SHOW_ITEM_LOGS = False if IS_DEBUG else False
-SHOW_GOAL_LOGS = False if IS_DEBUG else False
+SHOW_ITEM_LOGS = True if IS_DEBUG else False
+SHOW_GOAL_LOGS = True if IS_DEBUG else False
 SHOW_HAZARD_LOGS = True if IS_DEBUG else False
-SHOW_UI_DEBUG = False if IS_DEBUG else False
-SHOW_MAKING_PROGRESS = False if IS_DEBUG else False
-ONLY_SHOW_CLOSEST_PLAYER = False if IS_DEBUG else False
+SHOW_UI_DEBUG = True if IS_DEBUG else False
+SHOW_MAKING_PROGRESS = True if IS_DEBUG else False
+ONLY_SHOW_CLOSEST_PLAYER = True if IS_DEBUG else False
 
 #[General Settings]
 # === Game View Settings ===

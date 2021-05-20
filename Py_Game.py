@@ -389,13 +389,20 @@ class Player(pygame.sprite.Sprite):
         # -- Scanning
         self.scan_active = True
         
-        self.scan_top_f = False
-        self.scan_mid_f = False
-        self.scan_bot_f = False
-        self.scan_mid_r = False
-        self.scan_x_f = 0
-        self.scan_x_r = 0
+        self.scan_t1 = 0
+        self.scan_t2 = 0
+        self.scan_m1 = 0
+        self.scan_m2 = 0
+        self.scan_b1 = 0
+        self.scan_b2 = 0
+        self.scan_r = 0
+        
+        self.scan_x1 = 0
+        self.scan_x2 = 0
+        self.scan_xr = 0
         self.scan_y = 0
+        
+        
         self.scan_dot_radius = SCAN_DOT_RADIUS
         self.scan_dot_thickness = SCAN_DOT_THICKNESS
         
@@ -403,6 +410,13 @@ class Player(pygame.sprite.Sprite):
         self.scan_ground_tolerance = GROUND_TOLERANCE
         self.scan_ground_rect = (0, 0, 0, 0)
         
+        self.inputs = (self.scan_t1,
+                        self.scan_m1,
+                        self.scan_b1,
+                        self.scan_t2,
+                        self.scan_m2,
+                        self.scan_b2,
+                        self.scan_ground)
         
         self.const_x = x
         self.relative_scroll = 0
@@ -454,61 +468,87 @@ class Player(pygame.sprite.Sprite):
     def scan(self):
         if self.scan_active:
             if self.x_direction == 1:
-                self.scan_x_f = self.rect.right + (TILE_SIZE // 2)
-                self.scan_x_r = self.rect.left - (TILE_SIZE // 2)
+                self.scan_x1 = self.rect.right + (TILE_SIZE // 4)
+                self.scan_x2 = self.scan_x1 + ((TILE_SIZE // 2) * 3)
+                self.scan_xr = self.rect.left - (TILE_SIZE // 2)
             else:
-                self.scan_x_f = self.rect.left - (TILE_SIZE // 2)
-                self.scan_x_r = self.rect.right + (TILE_SIZE // 2)
+                self.scan_x1 = self.rect.left - (TILE_SIZE // 8)
+                self.scan_x2 = self.scan_x1 - ((TILE_SIZE // 2) * 3)
+                self.scan_xr = self.rect.right + (TILE_SIZE // 2)
                 
             self.scan_y = self.rect.bottom - (TILE_SIZE // 2)
             
-            self.scan_top_f = 0
-            self.scan_mid_f = 0
-            self.scan_bot_f = 0
-            self.scan_mid_r = 0
+            self.scan_t1 = 0
+            self.scan_t2 = 0
+            self.scan_m1 = 0
+            self.scan_m2 = 0
+            self.scan_b1 = 0
+            self.scan_b2 = 0
+            self.scan_r = 0
+        
             self.scan_ground = False
             
             for obj in world.wall_list:
-                if self.rect.x + 100 > obj[1].x > self.rect.x - 100:
-                    if obj[1].collidepoint((self.scan_x_f, self.scan_y - TILE_SIZE)):
-                        self.scan_top_f = 1
+                if self.rect.x + 150 > obj[1].x > self.rect.x - 150:
+                    if obj[1].collidepoint((self.scan_x1, self.scan_y - TILE_SIZE)):
+                        self.scan_t1 = 1
+                        
+                    if obj[1].collidepoint((self.scan_x2, self.scan_y - TILE_SIZE)):
+                        self.scan_t2 = 1
 
-                    if obj[1].collidepoint((self.scan_x_f, self.scan_y)):
-                        self.scan_mid_f = 1
+                    if obj[1].collidepoint((self.scan_x1, self.scan_y)):
+                        self.scan_m1 = 1
+                        
+                    if obj[1].collidepoint((self.scan_x2, self.scan_y)):
+                        self.scan_m2 = 1
 
-                    if obj[1].collidepoint((self.scan_x_f, self.scan_y + TILE_SIZE)):
-                        self.scan_bot_f = 1
+                    if obj[1].collidepoint((self.scan_x1, self.scan_y + TILE_SIZE)):
+                        self.scan_b1 = 1
+                        
+                    if obj[1].collidepoint((self.scan_x2, self.scan_y + TILE_SIZE)):
+                        self.scan_b2 = 1
 
                     #REAR VIEW
-                    if obj[1].collidepoint((self.scan_x_r, self.scan_y)):
-                        self.scan_mid_r = 1
+                    if obj[1].collidepoint((self.scan_xr, self.scan_y)):
+                        self.scan_r = 1
 
                     if obj[1].colliderect(self.scan_ground_rect):
                         self.scan_ground = True
                 
             for obj in world.object_group.sprites():
                 #check if top dot is active, and set scan_top to object_type
-                if self.rect.x + 100 > obj.rect.x > self.rect.x - 100:
-                    if obj.rect.collidepoint((self.scan_x_f, self.scan_y - TILE_SIZE)):
-                        if obj.type == 'hazard':
-                            self.scan_top_f = -1
+                if self.rect.x + 150 > obj.rect.x > self.rect.x - 150 and obj.type == 'hazard':
+                    if obj.rect.collidepoint((self.scan_x1, self.scan_y - TILE_SIZE)):
+                        self.scan_t1 = -1
+                        
+                    if obj.rect.collidepoint((self.scan_x2, self.scan_y - TILE_SIZE)):
+                        self.scan_t2 = -1
                         
                     #check if middle dot is active, and set scan_mid to object_type
-                    if obj.rect.collidepoint((self.scan_x_f, self.scan_y)):
-                        if obj.type == 'hazard':
-                            self.scan_mid_f = -1
+                    if obj.rect.collidepoint((self.scan_x1, self.scan_y)):
+                        self.scan_m1 = -1
+                        
+                    if obj.rect.collidepoint((self.scan_x2, self.scan_y)):
+                        self.scan_m2 = -1
                         
                     #check if bottom dot is active, and set scan_bot to object_type
-                    if obj.rect.collidepoint((self.scan_x_f, self.scan_y + TILE_SIZE)):
-                        if obj.type == 'hazard':
-                            self.scan_bot_f = -1
+                    if obj.rect.collidepoint((self.scan_x1, self.scan_y + TILE_SIZE)):
+                        self.scan_b1 = -1
                         
-                    #check if rear dot is active, and set scan_mid_r to object_type
-                    if obj.rect.collidepoint((self.scan_x_r, self.scan_y)):
-                        if obj.type == 'hazard':
-                            self.scan_mid_r = -1
+                    if obj.rect.collidepoint((self.scan_x2, self.scan_y + TILE_SIZE)):
+                        self.scan_b2 = -1
                         
-            
+                    #check if rear dot is active, and set scan_r to object_type
+                    if obj.rect.collidepoint((self.scan_xr, self.scan_y)):
+                        self.scan_r = -1
+                        
+            self.inputs = (self.scan_t1,
+                           self.scan_m1,
+                           self.scan_b1,
+                           self.scan_t2,
+                           self.scan_m2,
+                           self.scan_b2,
+                           self.scan_ground)
             
         else:
             return False
@@ -516,40 +556,60 @@ class Player(pygame.sprite.Sprite):
     def draw_scan_dots(self):
 
         radius = 5
-        thickness = 2
+        thickness = 1
          
         #top dot
-        if self.scan_top_f == -1: # scanned a hazard
-            pygame.draw.circle(screen, (255,0,0), (self.scan_x_f, self.scan_y - TILE_SIZE), radius, 0)
-        elif self.scan_top_f == 1: # scanned the ground
-            pygame.draw.circle(screen, (255,255,255), (self.scan_x_f, self.scan_y - TILE_SIZE), radius, 0)
+        if self.scan_t1 == -1: # scanned a hazard
+            pygame.draw.circle(screen, (255,0,0), (self.scan_x1, self.scan_y - TILE_SIZE), radius, 0)
+        elif self.scan_t1 == 1: # scanned the ground
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x1, self.scan_y - TILE_SIZE), radius, 0)
         else:
-            pygame.draw.circle(screen, (255,255,255), (self.scan_x_f, self.scan_y - TILE_SIZE), radius, thickness)
-            
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x1, self.scan_y - TILE_SIZE), radius, thickness)
+        
+        if self.scan_t2 == -1: # scanned a hazard
+            pygame.draw.circle(screen, (255,0,0), (self.scan_x2, self.scan_y - TILE_SIZE), radius, 0)
+        elif self.scan_t2 == 1: # scanned the ground
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x2, self.scan_y - TILE_SIZE), radius, 0)
+        else:
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x2, self.scan_y - TILE_SIZE), radius, thickness)
         
         #middle dot
-        if self.scan_mid_f == -1: # scanned a hazard
-            pygame.draw.circle(screen, (255,0,0), (self.scan_x_f, self.scan_y), radius, 0)
-        elif self.scan_mid_f == 1: # scanned the ground
-            pygame.draw.circle(screen, (255,255,255), (self.scan_x_f, self.scan_y), radius, 0)
+        if self.scan_m1 == -1: # scanned a hazard
+            pygame.draw.circle(screen, (255,0,0), (self.scan_x1, self.scan_y), radius, 0)
+        elif self.scan_m1 == 1: # scanned the ground
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x1, self.scan_y), radius, 0)
         else:
-            pygame.draw.circle(screen, (255,255,255), (self.scan_x_f, self.scan_y), radius, thickness)
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x1, self.scan_y), radius, thickness)
+            
+        if self.scan_m2 == -1: # scanned a hazard
+            pygame.draw.circle(screen, (255,0,0), (self.scan_x2, self.scan_y), radius, 0)
+        elif self.scan_m2 == 1: # scanned the ground
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x2, self.scan_y), radius, 0)
+        else:
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x2, self.scan_y), radius, thickness)
         
         #bottom dot
-        if self.scan_bot_f == -1: # scanned a hazard
-            pygame.draw.circle(screen, (255,0,0), (self.scan_x_f, self.scan_y + TILE_SIZE), radius, 0)
-        elif self.scan_bot_f == 1: # scanned the ground
-            pygame.draw.circle(screen, (255,255,255), (self.scan_x_f, self.scan_y + TILE_SIZE), radius, 0)
+        if self.scan_b1 == -1: # scanned a hazard
+            pygame.draw.circle(screen, (255,0,0), (self.scan_x1, self.scan_y + TILE_SIZE), radius, 0)
+        elif self.scan_b1 == 1: # scanned the ground
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x1, self.scan_y + TILE_SIZE), radius, 0)
         else:
-            pygame.draw.circle(screen, (255,255,255), (self.scan_x_f, self.scan_y + TILE_SIZE), radius, thickness)
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x1, self.scan_y + TILE_SIZE), radius, thickness)
+            
+        if self.scan_b2 == -1: # scanned a hazard
+            pygame.draw.circle(screen, (255,0,0), (self.scan_x2, self.scan_y + TILE_SIZE), radius, 0)
+        elif self.scan_b2 == 1: # scanned the ground
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x2, self.scan_y + TILE_SIZE), radius, 0)
+        else:
+            pygame.draw.circle(screen, (255,255,255), (self.scan_x2, self.scan_y + TILE_SIZE), radius, thickness)
             
         # rear view
-        if self.scan_mid_r == -1: # scanned a hazard
-            pygame.draw.circle(screen, (255,0,0), (self.scan_x_r, self.scan_y), radius, 0)
-        elif self.scan_mid_r == 1: # scanned the ground
-            pygame.draw.circle(screen, (255,255,255), (self.scan_x_r, self.scan_y), radius, 0)
+        if self.scan_r == -1: # scanned a hazard
+            pygame.draw.circle(screen, (255,0,0), (self.scan_xr, self.scan_y), radius, 0)
+        elif self.scan_r == 1: # scanned the ground
+            pygame.draw.circle(screen, (255,255,255), (self.scan_xr, self.scan_y), radius, 0)
         else:
-            pygame.draw.circle(screen, (255,255,255), (self.scan_x_r, self.scan_y), radius, thickness)
+            pygame.draw.circle(screen, (255,255,255), (self.scan_xr, self.scan_y), radius, thickness)
     
             
         #ground dot
@@ -1730,8 +1790,9 @@ def run_smarties(genomes, config):
 
             smarty.time_score += 1
             smarty_distance = smarty.distance_to_target
+            
             #To move: send distance to goal, if on ground, if it's moving and it's distance travelled
-            output = networks[smarties.index(smarty)].activate((smarty.get_is_on_ground(), smarty.scan_top_f, smarty.scan_mid_f, smarty.scan_bot_f, smarty.scan_mid_r ))
+            output = networks[smarties.index(smarty)].activate(smarty.inputs)
             
             #Activate movements based on NN outputs
             if output[0] > MOVE_BIAS:
@@ -1757,10 +1818,10 @@ def run_smarties(genomes, config):
             #if smarty.get_progress():
                 #ge[n].fitness += PROGRESS_FITNESS
                 
-            if smarty.scan_mid_f == 1 and smarty.scan_bot_f == 1: #If they're stuck against a wall, deduct fitness
+            if smarty.scan_m1 == 1 and smarty.scan_b1 == 1: #If they're stuck against a wall, deduct fitness
                 ge[n].fitness -= STUCK_PENALTY
                 
-            if smarty.scan_mid_r == 1:
+            if smarty.scan_r == 1:
                 ge[n].fitness -= (STUCK_PENALTY / 2)
                 
             if collide == 1: #If smarty hits an item
@@ -1814,6 +1875,9 @@ def run_smarties(genomes, config):
         print(scores)
         average_score = sum(scores) / len(scores)
         print(average_score)
+        print('\n== average skill ==')
+        print((average_score / average_time) * 100)
+        print('\n')
         if average_time >= 0:
             SETTINGS['generation_average_time'] = average_time
             
@@ -1859,9 +1923,10 @@ def run_smarties_hidden(genomes, config):
         #Generate Inputs to character
         for n, smarty in enumerate(smarties):
             smarty.time_score += 1
-            smarty_distance = smarty.distance_to_target
+            
+            
             #To move: send distance to goal, if on ground, if it's moving and it's distance travelled
-            output = networks[smarties.index(smarty)].activate((smarty.get_is_on_ground(), smarty.scan_top_f, smarty.scan_mid_f, smarty.scan_bot_f, smarty.scan_mid_r ))
+            output = networks[smarties.index(smarty)].activate(smarty.inputs)
             
             smarty.output_w = output[0]
             smarty.output_j = output[1]
@@ -1887,13 +1952,13 @@ def run_smarties_hidden(genomes, config):
             #if smarty.get_progress():
                 #ge[n].fitness += PROGRESS_FITNESS
             
-            if smarty.scan_mid_f == 1 and smarty.scan_bot_f == 1: #If they're stuck against a wall, deduct fitness
+            if smarty.scan_m1 == 1 and smarty.scan_b1 == 1: #If they're stuck against a wall, deduct fitness
                 ge[n].fitness -= STUCK_PENALTY
                 
-            if smarty.scan_mid_r == 1:
+            if smarty.scan_r == 1:
                 ge[n].fitness -= (STUCK_PENALTY / 2)
                 
-            if smarty.scan_mid_f == -1 or smarty.scan_top_f == -1:
+            if smarty.scan_m1 == -1 or smarty.scan_t1 == -1:
                 ge[n].fitness -= (STUCK_PENALTY / 2)
                 
             if collide == 1: #If smarty hits an item
@@ -1943,6 +2008,9 @@ def run_smarties_hidden(genomes, config):
         print(scores)
         average_score = sum(scores) / len(scores)
         print(average_score)
+        print('\n== average skill ==')
+        print((average_score / average_time) * 100)
+        print('\n')
     
 def run_dummy():
     global world, cur_timescore, cur_score
@@ -2025,10 +2093,10 @@ def run_dummy():
                     action = 'exit'
 
 
-            if dummy.scan_top_f == 0 and dummy.scan_mid_f == 0 and dummy.scan_bot_f < 1:
+            if dummy.scan_t1 == 0 and dummy.scan_m1 == 0 and dummy.scan_b1 < 1:
                 dummy.jump = True
             
-            if dummy.scan_top_f != 0 and dummy.scan_mid_f != 0 and dummy.scan_bot_f != 0:
+            if dummy.scan_t1 != 0 and dummy.scan_m1 != 0 and dummy.scan_b1 != 0:
                 if dummy.moving_right:
                     dummy.moving_right = False
                     dummy.moving_left = True
@@ -2036,7 +2104,7 @@ def run_dummy():
                     dummy.moving_right = True
                     dummy.moving_left = False
             
-            if dummy.scan_top_f == 0 and dummy.scan_mid_f != 0 and dummy.scan_bot_f != 0:
+            if dummy.scan_t1 == 0 and dummy.scan_m1 != 0 and dummy.scan_b1 != 0:
                 dummy.jump = True
                 
             if dummy.is_alive:
@@ -2163,10 +2231,10 @@ def run_dummies(population= DUMMY_POPULATION, batches= DUMMY_BATCHES):
             # if output > DUMMY_JUMP_BIAS:
             #     dummy.jump = True
                 
-            if dummy.scan_top_f == 0 and dummy.scan_mid_f == 0 and dummy.scan_bot_f < 1:
+            if dummy.scan_t1 == 0 and dummy.scan_m1 == 0 and dummy.scan_b1 < 1:
                 dummy.jump = True
             
-            if dummy.scan_top_f != 0 and dummy.scan_mid_f != 0 and dummy.scan_bot_f != 0:
+            if dummy.scan_t1 != 0 and dummy.scan_m1 != 0 and dummy.scan_b1 != 0:
                 if dummy.moving_right:
                     dummy.moving_right = False
                     dummy.moving_left = True
@@ -2174,7 +2242,7 @@ def run_dummies(population= DUMMY_POPULATION, batches= DUMMY_BATCHES):
                     dummy.moving_right = True
                     dummy.moving_left = False
             
-            if dummy.scan_top_f == 0 and dummy.scan_mid_f != 0 and dummy.scan_bot_f != 0:
+            if dummy.scan_t1 == 0 and dummy.scan_m1 != 0 and dummy.scan_b1 != 0:
                 dummy.jump = True
                 
                 
